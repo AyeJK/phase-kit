@@ -22,6 +22,8 @@ The orchestrator MUST:
 
 The orchestrator MUST NOT run build/typecheck/test commands, or grep for acceptance, during an active phase run.
 
+**Model (optional):** this role is mechanical — run a command, report pass/fail — a good candidate for a cheaper/faster model. If `runtime-adapter.md` resolved a `verify_doc_sync_model`, spawn this call with it. Otherwise use the session default; this is a cost optimization, never a blocker.
+
 ---
 
 ## Input payload (from orchestrator)

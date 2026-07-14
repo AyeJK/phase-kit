@@ -303,6 +303,8 @@ For each sprint, the sub-agent starts cold. Read project convention files (whate
 
 **Design system (UI work only):** inject absolute path to **`docs/design/design-system.md`** only — never the whole `docs/design/` folder — and only if the file exists.
 
+**Phase context (scoped, not the whole file):** a sprint's sub-agent needs two things out of the phase file — the phase-level preamble (everything from the top of the file down to, but not including, the first `# Sprint` header: title, goal, decision log, sequencing notes) and its **own** sprint section (`# Sprint {X.Y} — {Title}` through the next `# Sprint` header or end of file). It does **not** need its siblings' task tables, acceptance criteria, or verification blocks — those belong to sub-agents that aren't this one. Extract both pieces when building the prompt; don't paste the full file.
+
 #### 3a-ui — UI-primary sprint (`implementation_agent: ui`)
 
 Prompt must include:
@@ -368,8 +370,11 @@ TOOL USAGE POLICY:
 - Do NOT run CLI checks (build, typecheck, tests) here — **phase-verify sub-agent** runs those after you return.
 - Do NOT run browser automation / responsive / visual QA here — wave-test sub-agent handles that before doc-sync on UI waves.
 
-FULL PHASE PLAN (for context):
-{full content of the phase file}
+PHASE CONTEXT (scoped — not the full phase file, see "Phase context" note above):
+{phase-level preamble: title, goal, decision log, sequencing notes — everything before the first "# Sprint" header}
+
+THIS SPRINT'S SECTION (verbatim from the phase file):
+{this sprint's own "# Sprint {X.Y} — {Title}" section only: Goal, Tasks table, Acceptance Criteria, Dependencies, Verification. Do not include sibling sprints.}
 
 ---
 

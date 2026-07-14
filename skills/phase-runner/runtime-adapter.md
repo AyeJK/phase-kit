@@ -27,7 +27,16 @@ Do not assume a specific custom type (e.g. `technician`) exists. Check what's ac
 
 Record: `default_subagent_type`, and optionally `doc_sync_subagent_type` if a dedicated one exists.
 
-## 3. Resolve where companion skill files live
+## 3. Resolve a model override for narrow, mechanical roles (optional)
+
+`phase-verify` (run a command, report pass/fail) and `phase-doc-sync` (edit a status column) are narrow and deterministic — they don't need the same model tier as implementation or wave-test, which make judgment calls. If your spawn tool accepts a per-call model override (check its schema for a `model` parameter or similar), resolve a cheaper/faster tier for these two roles.
+
+- If a model override parameter exists, record `verify_doc_sync_model` (e.g. a faster/cheaper model than the run's default). Use it when spawning `phase-verify` and `phase-doc-sync` calls specifically — never for implementation, wave-test, or the orchestrator itself.
+- If no override parameter exists, skip this — every role runs on the session's default model. This is a cost optimization, not a correctness requirement; never block a run over it.
+
+Record: `verify_doc_sync_model` (optional — omit if unresolved).
+
+## 4. Resolve where companion skill files live
 
 Two mechanisms exist across tools:
 
@@ -43,12 +52,12 @@ Record: `skill_load_mode` (`named` or `path`) and, if `path`, `skills_root`.
 
 **In every other file in this kit**, references like "read `~/.cursor/skills/phase-ui-implement/SKILL.md`" mean: *load the `phase-ui-implement` skill using whatever `skill_load_mode` you resolved here.* Sub-agent prompts should pass whichever form is correct for the target session — a skill name if `named`, an absolute path if `path`.
 
-## 4. Report once
+## 5. Report once
 
 Before Step 2 of phase-runner, log a one-line summary:
 
 ```
-Runtime: {subagent_tool_name} sub-agents, type={default_subagent_type}, skills via {skill_load_mode}
+Runtime: {subagent_tool_name} sub-agents, type={default_subagent_type}, skills via {skill_load_mode}{, verify/doc-sync model={verify_doc_sync_model} if resolved}
 ```
 
 If discovery was ambiguous at any step (e.g. two spawn-capable tools, no clear default type), ask the user once rather than guessing — then cache the answer for the run.
