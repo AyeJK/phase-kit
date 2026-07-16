@@ -624,6 +624,10 @@ Next: Phase {N+1} — {Title}
 Sprints ahead: {X+1.1}, {X+1.2}, ...
 First sprint goal: {goal of first sprint in next phase}
 
+💡 This orchestrator thread has been accumulating result blocks from every sprint/verify/wave-test/doc-sync
+   call this phase. Consider running /compact (or starting a fresh session) before continuing —
+   sub-agents start cold regardless, so nothing is lost.
+
 Ready to begin Phase {N+1}? (yes / no / not yet)
 ```
 
