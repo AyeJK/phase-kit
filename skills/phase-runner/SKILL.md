@@ -25,7 +25,7 @@ Read **`runtime-adapter.md`** first, before anything else. It tells you which to
 
 - Resolve `workspace_root` per `project-layout.md` (it looks in the current folder, one level up, and one level down). `repo_root` is the git repo that contains it. This works whether the session started inside the repo or in a coordination folder above it — the worktree is always created in the repo, wherever the session started.
 - `docs/phases/` must be **tracked** in `repo_root` (single-folder layout). In a split layout where `docs/phases/` sits outside the repo, doc-sync would still write to a shared phase folder — tell the user worktree mode doesn't fit this layout and stop.
-- A native tool that switches the session into an existing worktree by path must be available (Claude Code: `EnterWorktree` with `path`). If not, the setup sub-agent still creates the worktree; tell the user to start a session inside it and run phase-runner there normally.
+- Note whether the session **started inside** `repo_root` (the start folder is the repo or inside it) or **above** it (a coordination folder holding the repo as a subfolder). This decides how the run reaches the worktree — see "Reach the worktree" below.
 
 **Create and set up the worktree (one sub-agent — orchestrator runs no shell):**
 
@@ -36,13 +36,21 @@ Spawn one call, description `Worktree setup — phase {N}`, with `repo_root` and
 3. Install dependencies with the project's package manager (lockfile decides: `npm ci`/`npm install`, `pnpm install`, `yarn`, `pip install -r …`, etc.).
 4. Confirm the worktree folder is ignored by the main checkout and excluded from its type-check and lint globs. A worktree nested in the repo (Claude Code puts them under `.claude/worktrees/`) is otherwise picked up by the main checkout's `tsc`/`eslint`, so the *other* session's verify gate would check this worktree's half-written code. If it isn't excluded, report which config needs the exclusion — do not edit it.
 5. Run `git worktree list` and, for every other worktree, report whether its branch or working tree touches this phase's file or any schema/migration path.
+6. Record `git -C {repo_root} status --porcelain` as `REPO_BASELINE`. Verify compares against it after each wave to catch an edit that landed in the main checkout instead of the worktree.
 
-Return a `WORKTREE SETUP RESULT` block with `PATH`, `BRANCH`, `BASE`, `RESUMED`, `ORIGINAL_DIRTY`, `ENV_COPIED`, `INSTALL`, `EXCLUDED`, `OTHER_WORKTREES`.
+Return a `WORKTREE SETUP RESULT` block with `PATH`, `BRANCH`, `BASE`, `RESUMED`, `ORIGINAL_DIRTY`, `ENV_COPIED`, `INSTALL`, `EXCLUDED`, `OTHER_WORKTREES`, `REPO_BASELINE`.
 
-**Enter the worktree (orchestrator), after the checks below pass:**
+**Reach the worktree (orchestrator), after the checks below pass:**
 
-- Call the worktree tool with `path: {PATH}`. The session's working directory is now the worktree.
-- Re-resolve `project-layout.md` from there: `workspace_root` and `app_root` are both the worktree. Every sub-agent's `APP_ROOT` / `WORKSPACE_ROOT` is inside it — never pass `repo_root` or the starting folder to a sub-agent.
+- **Session started inside `repo_root`:** call the worktree tool with `path: {PATH}` (Claude Code: `EnterWorktree`). The session's working directory is now the worktree.
+- **Session started above `repo_root`, or no such tool:** don't call it. It refuses when the start folder isn't a git repo. The session stays where it is and the run works entirely through absolute paths, which sub-agents need anyway.
+
+Either way:
+
+- `workspace_root` and `app_root` are both `{PATH}`. Every sub-agent's `APP_ROOT` / `WORKSPACE_ROOT` is `{PATH}`. Never pass `repo_root` or the start folder to a sub-agent.
+- **Every file the orchestrator checks or reads is by absolute path under `{PATH}`**: the phase file, `design-system.md`, the harness doc, convention docs. A relative path resolves against the start folder, not the worktree, and a miss there looks like "the file doesn't exist". That's how a run once told its UI sprints there was no design system.
+- Every sub-agent prompt says: run every shell command from `{PATH}` (`cd {PATH} && …`), and edit only files under `{PATH}`.
+- Pass `repo_root` and `REPO_BASELINE` to every verify call as `leak_check`: any path in `repo_root`'s status that isn't in the baseline is a leak. Verify reports it as a FAIL.
 - Project instructions (`CLAUDE.md` and the like) in folders above the repo still apply; the worktree sits inside the repo.
 
 **Orchestrator checks the result before Step 1:**
@@ -55,7 +63,7 @@ Return a `WORKTREE SETUP RESULT` block with `PATH`, `BRANCH`, `BASE`, `RESUMED`,
 | Another worktree touches schema/migrations **and** this phase has migration tasks | Warn: worktrees share one local database, so two branches adding migrations will diverge. Recommend running one of the two phases later |
 | Install failed | Stop and report |
 
-Report once: `Worktree: {path} (branch {branch}, from {base})`. Then enter it and continue at Step 1. Worktree mode also adds a finish step to the Step 4 checkpoint.
+Report once: `Worktree: {path} (branch {branch}, from {base})`. Then reach it as above and continue at Step 1. Worktree mode also adds a finish step to the Step 4 checkpoint.
 
 ---
 
@@ -120,8 +128,8 @@ Read **`skill-router.md`** at Step 1.5 (it in turn depends on `runtime-adapter.m
 
 1. **Scan** available skill names + descriptions per skill-router.md's discovery method.
 2. **Honor user-requested skills** from the run request — testing skills → wave-test; UI skills → implementation for UI sprints.
-3. **Per sprint:** set `implementation_agent: ui | general`; build `implementation_skills[]`; set `design_system_doc` to `{workspace_root}/docs/design/design-system.md` when sprint is UI or mixed **and that file exists**.
-4. **Per wave:** mark `wave_has_ui: true|false`; build `verify_skills[]`; build `wave_test_skills[]` when UI.
+3. **Per sprint:** set `implementation_agent: ui | general`; build `implementation_skills[]`; set `design_system_doc` to `{workspace_root}/docs/design/design-system.md` when sprint is UI or mixed **and that file exists** — check existence by absolute path, never relative. When it exists, grep its headings once (`^#{1,3} `) and set `design_sections[]` per sprint: the headings that match the components and screens its tasks name. This lets sub-agents read a few sections instead of the whole file.
+4. **Per wave:** mark `wave_has_ui: true|false`; build `verify_skills[]`; build `wave_test_skills[]` when UI; set `harness_doc` to `{app_root}/docs/testing/wave-test-harness.md` (pass it whether or not it exists yet — the first wave test creates it).
 5. **Include skill plan** in the execution plan report (Step 2.5).
 
 Sub-agents load their own assigned skill files/names themselves — orchestrator only passes the resolved references (paths or names, per runtime-adapter) in prompts, never runs those workflows inline.
@@ -133,11 +141,28 @@ Sub-agents load their own assigned skill files/names themselves — orchestrator
 During an active phase run the orchestrator may only:
 
 - Read phase files, skill-router, phase-doc-sync payload shape
+- Check that a file exists and grep `design-system.md`'s headings, by absolute path
 - Spawn sub-agents (implementation, verify, doc-sync, wave-test)
 - Parse `SPRINT RESULT`, `VERIFY RESULT`, `DOC SYNC RESULT`, `WAVE TEST RESULT`
 - One-line logs to the user
 
-The orchestrator must **not**: run shell commands directly, call browser/automation tools directly, start dev servers, read tool JSON descriptors, or run grep/typecheck for verification. All of that lives in sub-agents.
+The orchestrator must **not**: run shell commands directly, call browser/automation tools directly, start dev servers, read tool JSON descriptors, read source files, or run grep/typecheck for verification. All of that lives in sub-agents.
+
+---
+
+## Sub-agent lifecycle — fresh by default
+
+Every step an agent takes re-reads everything it has seen so far. An agent kept alive across waves drags every earlier wave's logs, screenshots and file reads into each new step. In one measured run, a single wave-test agent continued through four test jobs used 36% of the phase's tokens on its own; its context reached 600k.
+
+| Continue an existing agent (`SendMessage` or equivalent)? | |
+|---|---|
+| Same sprint's implementation, retry within the **same wave** | ✓ Preferred when the agent is still addressable: it already has the code in context and the fix is usually small. Otherwise re-spawn with the full 3a prompt |
+| Verify re-run within the **same wave**, after a retry | ✓ |
+| Wave-test retry | ✗ Spawn fresh at `tier: regression` with `retest_only` — cheaper than continuing a tester whose context is full of the first attempt's browser logs |
+| Any gate agent (verify, wave-test, doc-sync) into a **new wave** | ✗ Never. Spawn fresh |
+| An agent past its 3rd continuation | ✗ Spawn fresh; pass a short summary of what's already done |
+
+Pass a gate agent only what it needs: the payload, the harness doc path, the design sections. Never paste earlier waves' results into it.
 
 ---
 
@@ -231,7 +256,7 @@ On verify or wave-test **FAIL**, the **only** code-change path is re-spawn the *
 ### Required retry shape
 
 - **Description:** `Sprint {X.Y} — {title} (retry {n})` — same sprint id every time
-- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`
+- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`. When continuing the same agent within the wave (see Sub-agent lifecycle), send only the failures block and the retry number
 - **Type:** the general-purpose type resolved in runtime-adapter.md
 
 After implementation returns → **3b-verify** again → (UI) **3f** again. Never skip verify to save time.
@@ -380,7 +405,8 @@ You are a {UI implementation | software development} agent. Your job is to imple
 
 WORKSPACE_ROOT: {absolute path — docs/phases, doc-sync target}
 APP_ROOT: {absolute path — run checks/dev from here; edit src/ here}
-PHASE FILE: {absolute path to phase file under workspace_root}
+
+Everything you need from the phase plan is below. Don't open the phase file.
 
 PROJECT CONVENTIONS:
 {Point at whatever convention docs this project uses — list paths, don't paraphrase; sub-agent reads them itself}
@@ -388,6 +414,7 @@ PROJECT CONVENTIONS:
 {For 3a-ui only:}
 DESIGN SYSTEM (read first — overrides generic UI skills, if it exists):
 {absolute path or skill name: workspace_root/docs/design/design-system.md}
+DESIGN SECTIONS (read these, not the whole file): {design_sections from skill-router}
 
 AGENT SKILL:
 {phase-ui-implement, loaded per runtime-adapter.md} — read and follow
@@ -487,7 +514,8 @@ After **every** implementation call in the wave returns (with valid `SPRINT RESU
 Spawn **exactly one** verify call:
 
 - **description:** `Verify — {sprint ids}` e.g. `Verify — 5.2, 5.3`
-- **prompt:** load the `phase-verify` skill per runtime-adapter.md; JSON payload with `project_root` = **app_root**, `workspace_root`, `wave_sprints`, `skills_to_follow` (project convention docs relevant to build/test, from project-layout.md), `default_command`, `acceptance_checks`
+- **prompt:** load the `phase-verify` skill per runtime-adapter.md; JSON payload with `project_root` = **app_root**, `workspace_root`, `wave_sprints`, `skills_to_follow` (project convention docs relevant to build/test, from project-layout.md), `default_command`, `acceptance_checks`, and in worktree mode `leak_check`
+- **model:** `gate_model` if resolved; a **fresh** agent each wave (see Sub-agent lifecycle)
 
 Wait for `VERIFY RESULT:` **before spawning 3f or 3c-sync or any call for the next wave**.
 
@@ -539,6 +567,7 @@ Spawn **exactly one** doc-sync call when:
 - **type:** the doc-sync-dedicated type if runtime-adapter.md resolved one, otherwise the same general-purpose type
 - **description:** `Doc sync — {sprint ids}` e.g. `Doc sync — 11.1` or `Doc sync — 11.2, 11.4`
 - **prompt:** phase-doc-sync template; `project_root` = **workspace_root**; `phase_file` relative to workspace_root; full JSON payload
+- **model:** `gate_model` if resolved; a fresh agent each wave
 
 Wait for `DOC SYNC RESULT:` **before 3e or before spawning any call for the next wave**.
 
@@ -558,7 +587,9 @@ After **3c** (verify passed) and **before doc-sync**, if **`wave_has_ui`**:
 Spawn **exactly one** wave-test call:
 
 - **description:** `Wave test — {sprint ids}` e.g. `Wave test — 5.2, 5.3`
-- **prompt:** load the `phase-wave-test` skill per runtime-adapter.md; JSON with `project_root` = **app_root**, `workspace_root`, `design_system_doc` = `{workspace_root}/docs/design/design-system.md` (if it exists), `wave_sprints`, `skills_to_follow`, `test_urls`, `acceptance_notes`
+- **prompt:** load the `phase-wave-test` skill per runtime-adapter.md; JSON with `project_root` = **app_root**, `workspace_root`, `design_system_doc` = `{workspace_root}/docs/design/design-system.md` (if it exists), `design_sections` (union of the wave's sprints), `harness_doc`, `tier`, `wave_sprints`, `skills_to_follow`, `test_urls`, `acceptance_notes`
+- **tier:** `full` on the wave's first test; `regression` with `retest_only` = the previous `FAILURES` on every retry; `light` when the wave's UI change has no new visual surface
+- **model:** `gate_model` if resolved; a **fresh** agent every time — first test and every retry (see Sub-agent lifecycle)
 
 Wait for `WAVE TEST RESULT:` **before 3c-sync** — never batch with verify or doc-sync in the same turn.
 
@@ -579,7 +610,7 @@ On `WAVE TEST RESULT: STATUS: FAIL`:
 3. Parse `AFFECTED_SPRINTS`, `FAILURES`, `ISSUES`, `DESIGN_ISSUES`
 4. Re-spawn **same sprint** implementation (3a-ui / 3a-general, `(retry {n})`, failures injected). **No fix-only sub-agents.**
 5. Wait for `SPRINT RESULT:` → **3b-verify** (wait for PASS)
-6. Re-spawn **3f** only — **do not doc-sync** until wave-test PASS/WARN
+6. Re-spawn **3f** only, fresh, at `tier: regression` with `retest_only` — **do not doc-sync** until wave-test PASS/WARN
 7. Repeat until `PASS`/`WARN`, user says stop/skip, or escalation
 
 Orchestrator logs: `↻ Wave test — 5.3 (retry {n}/{max})`.
@@ -693,7 +724,7 @@ On **1**, spawn one sub-agent, description `Worktree finish — phase {N}`:
 4. Merge the worktree branch into the default branch **in `repo_root`**. If `repo_root` has uncommitted changes to any file the merge touches, stop and report instead of merging.
 5. Return `WORKTREE FINISH RESULT` with `STATUS: MERGED | CONFLICT | CHECK_FAILED | BLOCKED`, `FILES` and `NOTES`.
 
-On `MERGED`, ask before removing the worktree. On yes: exit it with the worktree tool (`keep` — a worktree entered by path is not removed by the tool), then spawn one call, `Worktree cleanup — phase {N}`, that runs `git -C {repo_root} worktree remove {path}` and `git -C {repo_root} branch -d phase/{N}`. On anything else, show the files and stop — the user resolves it, then asks to finish again.
+On `MERGED`, ask before removing the worktree. On yes: if the session entered the worktree, exit it with the worktree tool (`keep` — a worktree entered by path is not removed by the tool); then spawn one call, `Worktree cleanup — phase {N}`, that runs `git -C {repo_root} worktree remove {path}` and `git -C {repo_root} branch -d phase/{N}`. On anything else, show the files and stop — the user resolves it, then asks to finish again.
 
 Migrations merged from a worktree are already applied to the shared local database. Nothing to re-run.
 

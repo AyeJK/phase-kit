@@ -22,7 +22,7 @@ The orchestrator MUST:
 
 The orchestrator MUST NOT edit `docs/phases/*.md` during an active phase run.
 
-**Model (optional):** this role is mechanical — flip Status cells from a structured payload — a good candidate for a cheaper/faster model. If `runtime-adapter.md` resolved a `verify_doc_sync_model`, spawn this call with it. Otherwise use the session default; this is a cost optimization, never a blocker.
+**Model (optional):** this role is mechanical — flip Status cells from a structured payload — a good candidate for a cheaper/faster model. If `runtime-adapter.md` resolved a `gate_model`, spawn this call with it. Otherwise use the session default; this is a cost optimization, never a blocker.
 
 ---
 
@@ -68,8 +68,8 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
 
 ## Execution steps
 
-1. Load the **phase-planner** skill (per runtime-adapter.md in the phase-runner skill) and its `reference.md` if table format is unclear
-2. Read the target **phase file** once
+1. Load the **phase-planner** skill (per runtime-adapter.md in the phase-runner skill) only if a table needs migrating or its format is unclear. A table that already has a Status column doesn't need it.
+2. **Don't read the whole phase file.** Grep it for the sprint headers (`^# Sprint`) and the task rows (`^\| .* \| \d+ \|`) with line numbers, then read only the `### Tasks` table of each sprint in the payload (offset/limit).
 3. For each sprint in the payload (ascending `id`):
    - Locate section `# Sprint {id} — {title}`
    - Find the `### Tasks` table
@@ -81,7 +81,7 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
    - If tables are too large for one match, **at most one edit per sprint** by matching from `### Tasks` through the row before `### Acceptance`
    - **Never** one edit per task row
    - **One write pass per phase file** for the whole payload (batch all sprint edits before writing, or sequential edits on the same file in one session — still no per-row spam)
-5. Re-read the file and verify every listed task has the expected status
+5. Verify with the same grep: every listed task shows the expected status. Don't re-read the file.
 6. End with `DOC SYNC RESULT:` (required)
 
 ---

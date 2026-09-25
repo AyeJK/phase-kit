@@ -22,7 +22,9 @@ The orchestrator MUST:
 
 The orchestrator MUST NOT run build/typecheck/test commands, or grep for acceptance, during an active phase run.
 
-**Model (optional):** this role is mechanical — run a command, report pass/fail — a good candidate for a cheaper/faster model. If `runtime-adapter.md` resolved a `verify_doc_sync_model`, spawn this call with it. Otherwise use the session default; this is a cost optimization, never a blocker.
+**Model (optional):** this role is mechanical — run a command, report pass/fail — a good candidate for a cheaper/faster model. If `runtime-adapter.md` resolved a `gate_model`, spawn this call with it.
+
+**Fresh per wave:** spawn a new verify agent for each wave. A verify re-run *within* the same wave (after a retry) may continue the same agent; a new wave never does, because the old agent carries every earlier wave's output into each step. Otherwise use the session default; this is a cost optimization, never a blocker.
 
 ---
 
@@ -42,6 +44,7 @@ The orchestrator MUST NOT run build/typecheck/test commands, or grep for accepta
   ],
   "default_command": "{resolved from project-layout.md stack detection}",
   "acceptance_checks": ["grep patterns or notes from sprint acceptance criteria"],
+  "leak_check": { "repo_root": "/path/to/main-checkout", "baseline": "git status --porcelain output from worktree setup" },
   "fix_mode": false
 }
 ```
@@ -55,6 +58,7 @@ The orchestrator MUST NOT run build/typecheck/test commands, or grep for accepta
 | `default_command` | Fallback when no `cli:` hints — resolved by stack detection in project-layout.md, not a fixed universal default |
 | `acceptance_checks` | Optional grep/file-exists checks named in acceptance criteria |
 | `fix_mode` | If `true`, apply minimal fixes and re-run; default `false` → report FAIL |
+| `leak_check` | Worktree mode only. Run `git -C {repo_root} status --porcelain`; any path not in `baseline` means a sub-agent edited the main checkout instead of the worktree → `STATUS: FAIL`, list the paths in `FAILURES` |
 
 ---
 
@@ -64,6 +68,7 @@ The orchestrator MUST NOT run build/typecheck/test commands, or grep for accepta
 2. **Resolve command** — per sprint `### Verification` `cli:`; if multiple sprints specify different commands, run all required commands in order
 3. **Run CLI checks** — from **app_root** (`project_root`); capture exit code and failure output
 4. **Run acceptance checks** — minimal grep / file-exists patterns from sprint acceptance when specified (not full exploratory QA)
+4b. **Review the diff, not the files** — a quick read of the wave's changes can catch a regression the commands miss, and that's worth doing. Read `git diff` for the files the wave touched (with a few lines of context), not whole files. Read a whole file only to trace one specific suspected problem. Budget: about 25 tool calls for the whole verify; if you need more, report what you have.
 5. **Map failures to sprints** — when stack traces or changed files suggest which sprint broke, set `AFFECTED_SPRINTS`; else `ALL`
 6. **If `fix_mode: true`** — apply minimal fixes, re-run failed commands
 7. End with `VERIFY RESULT:` block (required)

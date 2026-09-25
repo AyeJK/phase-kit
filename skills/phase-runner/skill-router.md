@@ -27,7 +27,8 @@ For each sprint in the run:
 2. **Build `implementation_skills[]`:**
    - `ui` sprints: any UI-pattern skill available in your index (e.g. `ui-design-brain` if installed — **optional**, not a hard dependency; see phase-ui-implement) plus any domain-specific skill matched by keyword overlap between the sprint goal and skill descriptions.
    - `general` sprints: domain skills matched the same way (e.g. a database skill for schema-heavy sprints).
-3. **Set `design_system_doc`** to `{workspace_root}/docs/design/design-system.md` whenever the sprint is `ui` or mixed-with-UI. Only if that file exists — note in the plan if it doesn't (design-planner hasn't run yet; implementation should fall back to matching existing components).
+3. **Set `design_system_doc`** to `{workspace_root}/docs/design/design-system.md` whenever the sprint is `ui` or mixed-with-UI. Only if that file exists — check by absolute path — and note in the plan if it doesn't (design-planner hasn't run yet; implementation should fall back to matching existing components).
+4. **Set `design_sections[]`** when the design system exists: grep its headings once per run, then pick the headings that match the components and screens this sprint's tasks name (e.g. a sprint building a tab bar and a menu → `Tabs`, `Menus`). Sub-agents read these sections instead of the whole file. If nothing matches clearly, leave it empty and the sub-agent picks from the headings itself.
 
 ## 4. Per-wave routing
 

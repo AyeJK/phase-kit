@@ -40,14 +40,15 @@ The orchestrator spawns you for **UI-primary sprints**. Mixed or data-only sprin
 |-------|---------|
 | `workspace_root` | Coordination folder — design-system path lives here |
 | `app_root` | Edit `src/` and components here |
-| `design_system_doc` | `{workspace_root}/docs/design/design-system.md` — **read first**, if it exists |
+| `design_system_doc` | `{workspace_root}/docs/design/design-system.md` — **read first**, if it exists, by section |
+| `design_sections` | Headings of `design_system_doc` the orchestrator matched to this sprint's tasks |
 | `implementation_skills` | Read after design system — e.g. a generic UI component-pattern skill, if installed |
 
 ---
 
 ## Read order (mandatory)
 
-1. **`design_system_doc`**, if present — project source of truth; wins on any conflict
+1. **`design_system_doc`**, if present — project source of truth; wins on any conflict. **Read it by section, not whole:** grep its headings (`^#`) first, then read the sections the prompt names under `DESIGN SECTIONS`, plus any other heading that's clearly about a component you're building. Read each section once and keep it in mind; don't re-read.
 2. Assigned **implementation skills**, if any — generic patterns; defer to design system for colors, fonts, spacing, copy style
 3. Project convention docs (whatever this project uses — rules files, CONTRIBUTING.md, CLAUDE.md — injected in prompt)
 4. Sprint tasks and acceptance criteria
@@ -100,4 +101,7 @@ NOTES: [decisions, design-system deviations (should be NONE), warnings for wave-
 - Edit phase plan files
 - Run CLI verification or browser QA
 - Load all of `docs/design/` — **only** `design-system.md` unless orchestrator adds another path
+- Read the whole `design-system.md` — its headings, then the sections you need
+- Open the phase file — your sprint section and the phase preamble are already in your prompt
+- Fetch the phase's design source (a canvas, mockup or artifact link) more than once, or at all when the sprint section already describes the board you're building. If you need it, fetch it once and pull out only the boards your tasks cite
 - Introduce a bold new visual identity when extending an existing product's UI — match what's already there unless the sprint or design-system.md explicitly calls for a redesign

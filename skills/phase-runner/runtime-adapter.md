@@ -27,14 +27,15 @@ Do not assume a specific custom type (e.g. `technician`) exists. Check what's ac
 
 Record: `default_subagent_type`, and optionally `doc_sync_subagent_type` if a dedicated one exists.
 
-## 3. Resolve a model override for narrow, mechanical roles (optional)
+## 3. Resolve a model override for the gate roles (optional)
 
-`phase-verify` (run a command, report pass/fail) and `phase-doc-sync` (edit a status column) are narrow and deterministic — they don't need the same model tier as implementation or wave-test, which make judgment calls. If your spawn tool accepts a per-call model override (check its schema for a `model` parameter or similar), resolve a cheaper/faster tier for these two roles.
+The three gates are narrow: `phase-verify` runs commands and reports pass/fail, `phase-doc-sync` edits status cells, and `phase-wave-test` drives a browser through a known checklist. None needs the model tier that implementation needs. Wave-test is also the most expensive role by volume (about half of a UI-heavy phase run), so its model choice matters most. If your spawn tool accepts a per-call model override (check its schema for a `model` parameter or similar), resolve a cheaper/faster tier for these three roles.
 
-- If a model override parameter exists, record `verify_doc_sync_model` (e.g. a faster/cheaper model than the run's default). Use it when spawning `phase-verify` and `phase-doc-sync` calls specifically — never for implementation, wave-test, or the orchestrator itself.
+- If a model override parameter exists, record `gate_model` (e.g. a faster/cheaper model than the run's default). Use it when spawning `phase-verify`, `phase-doc-sync` and `phase-wave-test` — never for implementation or the orchestrator.
+- If the user asks for a stronger model on wave-test (e.g. for a design-heavy phase), honor it for that run.
 - If no override parameter exists, skip this — every role runs on the session's default model. This is a cost optimization, not a correctness requirement; never block a run over it.
 
-Record: `verify_doc_sync_model` (optional — omit if unresolved).
+Record: `gate_model` (optional — omit if unresolved).
 
 ## 4. Resolve where companion skill files live
 
@@ -57,7 +58,7 @@ Record: `skill_load_mode` (`named` or `path`) and, if `path`, `skills_root`.
 Before Step 2 of phase-runner, log a one-line summary:
 
 ```
-Runtime: {subagent_tool_name} sub-agents, type={default_subagent_type}, skills via {skill_load_mode}{, verify/doc-sync model={verify_doc_sync_model} if resolved}
+Runtime: {subagent_tool_name} sub-agents, type={default_subagent_type}, skills via {skill_load_mode}{, gate model={gate_model} if resolved}
 ```
 
 If discovery was ambiguous at any step (e.g. two spawn-capable tools, no clear default type), ask the user once rather than guessing — then cache the answer for the run.
