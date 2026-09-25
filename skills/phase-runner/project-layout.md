@@ -13,7 +13,7 @@ Two roots matter, and they are not always the same folder:
 
 ## Resolution steps
 
-1. **Look for `docs/phases/` first**, starting at the current working directory, then checking one level up if not found. Wherever it lives is `workspace_root`.
+1. **Look for `docs/phases/` first**, starting at the current working directory, then one level up, then one level down (each immediate subfolder). Wherever it lives is `workspace_root`. If the one-level-down search finds it in more than one subfolder, ask the user once which one. This covers sessions started in a coordination folder that holds the repo as a subfolder.
 2. **Look for a stack manifest** in `workspace_root` itself. If found there, `app_root == workspace_root` — this is a **single-folder layout** (docs and code live together, common for small projects).
 3. **If no manifest in `workspace_root`**, look for exactly one subfolder containing a manifest (commonly named `{project}-repo/`, `app/`, `src-repo/`, or similar — no fixed convention, just look for the manifest). That subfolder is `app_root` — this is a **split layout** (a coordination folder with docs/design separate from the app repo, useful when phase files should survive a full app rewrite).
 4. **If multiple subfolders contain manifests** (monorepo, or ambiguous layout), do not guess. Ask the user once:
@@ -23,7 +23,8 @@ Two roots matter, and they are not always the same folder:
      2. {path B}
    Which one should sprint implementation and verify run against? (Or: multiple — I'll ask per-sprint if tasks touch different packages.)
    ```
-5. **If the user states paths explicitly** ("workspace root is X, app root is Y") — use those, skip detection entirely.
+5. **In worktree mode** (phase-runner Step 0.5), re-resolve after the session enters the worktree: both roots become the worktree itself.
+6. **If the user states paths explicitly** ("workspace root is X, app root is Y") — use those, skip detection entirely.
 
 ## Report before proceeding
 

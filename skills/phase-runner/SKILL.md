@@ -21,27 +21,29 @@ Read **`runtime-adapter.md`** first, before anything else. It tells you which to
 
 **Only when the user asks for it** — "run phase 4 in a worktree", "run this in parallel with the other session", "resume phase 4 in its worktree". Otherwise skip this step entirely: a normal run works in the current checkout, and phase-runner already parallelizes independent sprints inside a phase. Worktree mode exists for running **two phases at once** in two sessions without their verify gates tripping over each other's half-written code.
 
-**Requirements — check before doing anything:**
+**Find the repo (`repo_root`) — check before doing anything:**
 
-- The session was started inside the git repo, and `docs/phases/` is tracked in that repo (single-folder layout per `project-layout.md`). In a split layout where `docs/phases/` sits outside the repo, doc-sync would still write to a shared phase folder — tell the user worktree mode doesn't fit this layout and stop.
-- A native worktree tool is available (Claude Code: `EnterWorktree`). If not, tell the user to create one themselves (`claude -w {name}` from the repo, or `git worktree add`) and start the session inside it — then run phase-runner normally.
+- Resolve `workspace_root` per `project-layout.md` (it looks in the current folder, one level up, and one level down). `repo_root` is the git repo that contains it. This works whether the session started inside the repo or in a coordination folder above it — the worktree is always created in the repo, wherever the session started.
+- `docs/phases/` must be **tracked** in `repo_root` (single-folder layout). In a split layout where `docs/phases/` sits outside the repo, doc-sync would still write to a shared phase folder — tell the user worktree mode doesn't fit this layout and stop.
+- A native tool that switches the session into an existing worktree by path must be available (Claude Code: `EnterWorktree` with `path`). If not, the setup sub-agent still creates the worktree; tell the user to start a session inside it and run phase-runner there normally.
 
-**Enter the worktree (orchestrator):**
+**Create and set up the worktree (one sub-agent — orchestrator runs no shell):**
 
-- New run: call the worktree tool with `name: phase-{N}`. Resume: call it with `path` pointing at the existing worktree (find it via `git worktree list` in the setup sub-agent below, or ask).
-- The session's working directory is now the worktree. Everything after this — `project-layout.md` resolution, every sub-agent's `APP_ROOT` / `WORKSPACE_ROOT` — resolves inside it. Never pass the original checkout's paths to a sub-agent.
+Spawn one call, description `Worktree setup — phase {N}`, with `repo_root` and the target path `{repo_root}/.claude/worktrees/phase-{N}`. It must:
 
-**Set up the worktree (one sub-agent — orchestrator runs no shell):**
-
-Spawn one call, description `Worktree setup — phase {N}`, with the original checkout path and the worktree path. It must:
-
-1. Report the branch name, the commit it was created from, and whether the **original checkout** has uncommitted changes. Uncommitted work never carries into a worktree; if the original checkout is dirty, say so, because this phase may depend on work that isn't in its base.
-2. Copy untracked, gitignored env files (`.env`, `.env.*`, excluding anything already tracked such as `.env.example`) from the original checkout into the same relative paths in the worktree.
+1. If the target path is already in `git worktree list`, this is a **resume** — skip creation and steps 3–4. Otherwise create it from the repo's current `HEAD`: `git -C {repo_root} worktree add {target} -b phase/{N}` (if the branch exists, add it without `-b`). Report the branch, the base commit, and whether `repo_root` has uncommitted changes. Uncommitted work never carries into a worktree; if `repo_root` is dirty, say so, because this phase may depend on work that isn't in its base.
+2. Copy untracked, gitignored env files (`.env`, `.env.*`, excluding anything already tracked such as `.env.example`) from `repo_root` into the same relative paths in the worktree.
 3. Install dependencies with the project's package manager (lockfile decides: `npm ci`/`npm install`, `pnpm install`, `yarn`, `pip install -r …`, etc.).
 4. Confirm the worktree folder is ignored by the main checkout and excluded from its type-check and lint globs. A worktree nested in the repo (Claude Code puts them under `.claude/worktrees/`) is otherwise picked up by the main checkout's `tsc`/`eslint`, so the *other* session's verify gate would check this worktree's half-written code. If it isn't excluded, report which config needs the exclusion — do not edit it.
 5. Run `git worktree list` and, for every other worktree, report whether its branch or working tree touches this phase's file or any schema/migration path.
 
-Return a `WORKTREE SETUP RESULT` block with `BRANCH`, `BASE`, `ORIGINAL_DIRTY`, `ENV_COPIED`, `INSTALL`, `EXCLUDED`, `OTHER_WORKTREES`.
+Return a `WORKTREE SETUP RESULT` block with `PATH`, `BRANCH`, `BASE`, `RESUMED`, `ORIGINAL_DIRTY`, `ENV_COPIED`, `INSTALL`, `EXCLUDED`, `OTHER_WORKTREES`.
+
+**Enter the worktree (orchestrator), after the checks below pass:**
+
+- Call the worktree tool with `path: {PATH}`. The session's working directory is now the worktree.
+- Re-resolve `project-layout.md` from there: `workspace_root` and `app_root` are both the worktree. Every sub-agent's `APP_ROOT` / `WORKSPACE_ROOT` is inside it — never pass `repo_root` or the starting folder to a sub-agent.
+- Project instructions (`CLAUDE.md` and the like) in folders above the repo still apply; the worktree sits inside the repo.
 
 **Orchestrator checks the result before Step 1:**
 
@@ -53,7 +55,7 @@ Return a `WORKTREE SETUP RESULT` block with `BRANCH`, `BASE`, `ORIGINAL_DIRTY`, 
 | Another worktree touches schema/migrations **and** this phase has migration tasks | Warn: worktrees share one local database, so two branches adding migrations will diverge. Recommend running one of the two phases later |
 | Install failed | Stop and report |
 
-Report once: `Worktree: {path} (branch {branch}, from {base})`. Then continue at Step 1. Worktree mode also adds a finish step to the Step 4 checkpoint.
+Report once: `Worktree: {path} (branch {branch}, from {base})`. Then enter it and continue at Step 1. Worktree mode also adds a finish step to the Step 4 checkpoint.
 
 ---
 
@@ -688,10 +690,10 @@ On **1**, spawn one sub-agent, description `Worktree finish — phase {N}`:
 1. Commit anything uncommitted in the worktree (message: `Phase {N}: {title}`).
 2. Merge the default branch **into the worktree branch**. On conflict: `git merge --abort`, list the conflicting files, return — never resolve silently.
 3. If the merge brought in changes, run the project's check command (same as `phase-verify`'s default). Fail → return without merging.
-4. Merge the worktree branch into the default branch **in the original checkout**. If the original checkout has uncommitted changes to any file the merge touches, stop and report instead of merging.
+4. Merge the worktree branch into the default branch **in `repo_root`**. If `repo_root` has uncommitted changes to any file the merge touches, stop and report instead of merging.
 5. Return `WORKTREE FINISH RESULT` with `STATUS: MERGED | CONFLICT | CHECK_FAILED | BLOCKED`, `FILES` and `NOTES`.
 
-On `MERGED`, ask before removing the worktree; on yes, exit it with the worktree tool (`remove`). On anything else, show the files and stop — the user resolves it, then asks to finish again.
+On `MERGED`, ask before removing the worktree. On yes: exit it with the worktree tool (`keep` — a worktree entered by path is not removed by the tool), then spawn one call, `Worktree cleanup — phase {N}`, that runs `git -C {repo_root} worktree remove {path}` and `git -C {repo_root} branch -d phase/{N}`. On anything else, show the files and stop — the user resolves it, then asks to finish again.
 
 Migrations merged from a worktree are already applied to the shared local database. Nothing to re-run.
 
@@ -722,7 +724,7 @@ Migrations merged from a worktree are already applied to the shared local databa
 | Orchestrator batches verify + wave-test + doc-sync | Stop — one gate per turn; see Wave sequencing |
 | Orchestrator spawns a "Fix {sprint}" or fixer sub-agent for code | Stop — use same-sprint re-implement `(retry n)` per Retry implementation only |
 | workspace_root vs app_root unclear | Resolve via project-layout.md at Step 1; never guess per sprint |
-| Worktree mode asked for, session not in a git repo | Say so; the user starts the session inside the repo and asks again |
+| Worktree mode: no git repo found at, above or one level below the session folder | Say so and stop; don't guess a repo |
 | Worktree mode: another worktree is running the same phase | Stop — one phase file, one worktree |
 | Worktree finish: merge conflict | Abort the merge, list files, wait for the user — never resolve silently |
 | Two phases in two sessions **without** worktrees | Warn: each verify gate checks the whole repo and will fail on the other session's in-progress code. Offer worktree mode |
