@@ -1,6 +1,6 @@
 ---
 name: phase-runner
-description: "Orchestrates automated sprint implementation from phase plans — e.g. 'run phase 1', 'implement sprint 1.3'. Spawns phase-ui-implement (UI sprints + docs/design/design-system.md), general implementation (data/mixed), phase-verify, phase-wave-test (design asserts), phase-doc-sync. Skill-router per sprint. Clean orchestrator thread. Max 3 retries per gate then escalate. Pauses at blockers and phase boundaries."
+description: "Orchestrates automated sprint implementation from phase plans — e.g. 'run phase 1', 'implement sprint 1.3', 'run phase 4 in a worktree'. Optional worktree mode isolates a phase run on its own branch so two phases can run at once. Spawns phase-ui-implement (UI sprints + docs/design/design-system.md), general implementation (data/mixed), phase-verify, phase-wave-test (design asserts), phase-doc-sync. Skill-router per sprint. Clean orchestrator thread. Max 3 retries per gate then escalate. Pauses at blockers and phase boundaries."
 ---
 
 # Phase Runner
@@ -14,6 +14,46 @@ Orchestrates sprint implementation from phase plan files at `docs/phases/Phase-{
 ## Step 0 — Resolve the runtime
 
 Read **`runtime-adapter.md`** first, before anything else. It tells you which tool spawns sub-agents in this session, what subagent type to use, and how to load the other phase-kit skills (by name or by path). Every "spawn a Task" and "read skill X" instruction below assumes you've already done this — substitute the resolved tool/type/loading-mechanism throughout.
+
+---
+
+## Step 0.5 — Worktree mode (opt-in)
+
+**Only when the user asks for it** — "run phase 4 in a worktree", "run this in parallel with the other session", "resume phase 4 in its worktree". Otherwise skip this step entirely: a normal run works in the current checkout, and phase-runner already parallelizes independent sprints inside a phase. Worktree mode exists for running **two phases at once** in two sessions without their verify gates tripping over each other's half-written code.
+
+**Requirements — check before doing anything:**
+
+- The session was started inside the git repo, and `docs/phases/` is tracked in that repo (single-folder layout per `project-layout.md`). In a split layout where `docs/phases/` sits outside the repo, doc-sync would still write to a shared phase folder — tell the user worktree mode doesn't fit this layout and stop.
+- A native worktree tool is available (Claude Code: `EnterWorktree`). If not, tell the user to create one themselves (`claude -w {name}` from the repo, or `git worktree add`) and start the session inside it — then run phase-runner normally.
+
+**Enter the worktree (orchestrator):**
+
+- New run: call the worktree tool with `name: phase-{N}`. Resume: call it with `path` pointing at the existing worktree (find it via `git worktree list` in the setup sub-agent below, or ask).
+- The session's working directory is now the worktree. Everything after this — `project-layout.md` resolution, every sub-agent's `APP_ROOT` / `WORKSPACE_ROOT` — resolves inside it. Never pass the original checkout's paths to a sub-agent.
+
+**Set up the worktree (one sub-agent — orchestrator runs no shell):**
+
+Spawn one call, description `Worktree setup — phase {N}`, with the original checkout path and the worktree path. It must:
+
+1. Report the branch name, the commit it was created from, and whether the **original checkout** has uncommitted changes. Uncommitted work never carries into a worktree; if the original checkout is dirty, say so, because this phase may depend on work that isn't in its base.
+2. Copy untracked, gitignored env files (`.env`, `.env.*`, excluding anything already tracked such as `.env.example`) from the original checkout into the same relative paths in the worktree.
+3. Install dependencies with the project's package manager (lockfile decides: `npm ci`/`npm install`, `pnpm install`, `yarn`, `pip install -r …`, etc.).
+4. Confirm the worktree folder is ignored by the main checkout and excluded from its type-check and lint globs. A worktree nested in the repo (Claude Code puts them under `.claude/worktrees/`) is otherwise picked up by the main checkout's `tsc`/`eslint`, so the *other* session's verify gate would check this worktree's half-written code. If it isn't excluded, report which config needs the exclusion — do not edit it.
+5. Run `git worktree list` and, for every other worktree, report whether its branch or working tree touches this phase's file or any schema/migration path.
+
+Return a `WORKTREE SETUP RESULT` block with `BRANCH`, `BASE`, `ORIGINAL_DIRTY`, `ENV_COPIED`, `INSTALL`, `EXCLUDED`, `OTHER_WORKTREES`.
+
+**Orchestrator checks the result before Step 1:**
+
+| Finding | Action |
+|---|---|
+| `ORIGINAL_DIRTY: yes` | Warn; ask whether to continue, or stop so the user can commit first |
+| `EXCLUDED: no` | Warn with the config to fix; ask before continuing |
+| Another worktree touches this phase file | **Stop.** Two runs on one phase file cannot be merged cleanly |
+| Another worktree touches schema/migrations **and** this phase has migration tasks | Warn: worktrees share one local database, so two branches adding migrations will diverge. Recommend running one of the two phases later |
+| Install failed | Stop and report |
+
+Report once: `Worktree: {path} (branch {branch}, from {base})`. Then continue at Step 1. Worktree mode also adds a finish step to the Step 4 checkpoint.
 
 ---
 
@@ -633,6 +673,28 @@ Ready to begin Phase {N+1}? (yes / no / not yet)
 
 Only continue if the user explicitly confirms.
 
+### Worktree mode — finish the phase
+
+In worktree mode, the checkpoint does **not** offer the next phase — one worktree is one phase. Instead it offers:
+
+```
+Phase {N} is done on branch {branch}. Merge it back?
+  1. Merge — bring master into this branch, re-verify, then merge into master
+  2. Keep the worktree — stop here, merge later
+```
+
+On **1**, spawn one sub-agent, description `Worktree finish — phase {N}`:
+
+1. Commit anything uncommitted in the worktree (message: `Phase {N}: {title}`).
+2. Merge the default branch **into the worktree branch**. On conflict: `git merge --abort`, list the conflicting files, return — never resolve silently.
+3. If the merge brought in changes, run the project's check command (same as `phase-verify`'s default). Fail → return without merging.
+4. Merge the worktree branch into the default branch **in the original checkout**. If the original checkout has uncommitted changes to any file the merge touches, stop and report instead of merging.
+5. Return `WORKTREE FINISH RESULT` with `STATUS: MERGED | CONFLICT | CHECK_FAILED | BLOCKED`, `FILES` and `NOTES`.
+
+On `MERGED`, ask before removing the worktree; on yes, exit it with the worktree tool (`remove`). On anything else, show the files and stop — the user resolves it, then asks to finish again.
+
+Migrations merged from a worktree are already applied to the shared local database. Nothing to re-run.
+
 ---
 
 ## Error Handling
@@ -660,6 +722,10 @@ Only continue if the user explicitly confirms.
 | Orchestrator batches verify + wave-test + doc-sync | Stop — one gate per turn; see Wave sequencing |
 | Orchestrator spawns a "Fix {sprint}" or fixer sub-agent for code | Stop — use same-sprint re-implement `(retry n)` per Retry implementation only |
 | workspace_root vs app_root unclear | Resolve via project-layout.md at Step 1; never guess per sprint |
+| Worktree mode asked for, session not in a git repo | Say so; the user starts the session inside the repo and asks again |
+| Worktree mode: another worktree is running the same phase | Stop — one phase file, one worktree |
+| Worktree finish: merge conflict | Abort the merge, list files, wait for the user — never resolve silently |
+| Two phases in two sessions **without** worktrees | Warn: each verify gate checks the whole repo and will fail on the other session's in-progress code. Offer worktree mode |
 
 ---
 
