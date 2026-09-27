@@ -12,7 +12,7 @@ If you've ever had an agent "finish" a feature that doesn't build, or watched a 
 | `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. Optional, for UI-heavy projects. |
 | `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. This is the one you'll talk to most for "mark task 3 done" or "what's left in sprint 2.1." |
 | `phase-runner` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
-| `phase-verify` | Sub-agent: runs your build/test/typecheck command and reports pass/fail. Never runs inline in the orchestrator thread. |
+| `phase-verify` | Sub-agent: runs your build/test/typecheck command, then reviews the wave's diff — a met/not-met verdict with evidence for every acceptance criterion, a check that no test was deleted or weakened, and a check that changes stay inside each sprint's Module column. Serious findings fail the wave and trigger a retry. Never runs inline in the orchestrator thread. |
 | `phase-wave-test` | Sub-agent: browser/UI verification for UI sprints, using your project's own `design-system.md` if one exists. |
 | `phase-doc-sync` | Sub-agent: the *only* thing allowed to write status changes back into the phase file. Batches edits, never touches acceptance criteria or task text. |
 | `phase-ui-implement` | Implementation sub-agent for UI-primary sprints — reads your design-system.md first, generic UI-pattern skills second. |
@@ -62,6 +62,19 @@ This kit was originally built against Cursor's skill/sub-agent conventions and h
 ## Optional dependencies
 
 `phase-ui-implement` and `design-planner` will use a generic UI-component-pattern skill and a frontend-design-direction skill *if you have one installed* — they're not bundled here, since good ones are often licensed separately (for example, Anthropic ships example skills like this with its own products). Nothing in this kit requires them; without one, implementation falls back to matching your project's existing components and, absent that, standard accessible-UI defaults. If you have such a skill installed under a name your environment can discover, `skill-router.md` will pick it up automatically.
+
+## Install
+
+**Claude Code (plugin):**
+
+```
+/plugin marketplace add AyeJK/phase-kit
+/plugin install phase-kit@phase-kit
+```
+
+Skills are then available as `phase-kit:phase-runner`, `phase-kit:phase-planner`, etc. The runtime adapter detects the prefix automatically.
+
+**Manual (Cursor, or any Claude Code–compatible runtime):** clone the repo and copy `skills/*` into `.claude/skills/`, `.cursor/skills/`, or your home-level equivalent.
 
 ## Quickstart
 

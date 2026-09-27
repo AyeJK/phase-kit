@@ -34,6 +34,7 @@ The orchestrator includes this JSON in your prompt:
 {
   "phase_file": "docs/phases/Phase-11-Example-Feature.md",
   "project_root": "/path/to/workspace",
+  "app_root": "/path/to/app-root",
   "sprints": [
     {
       "id": "11.1",
@@ -82,7 +83,8 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
    - **Never** one edit per task row
    - **One write pass per phase file** for the whole payload (batch all sprint edits before writing, or sequential edits on the same file in one session — still no per-row spam)
 5. Verify with the same grep: every listed task shows the expected status. Don't re-read the file.
-6. End with `DOC SYNC RESULT:` (required)
+6. **Snapshot for the next wave.** From `app_root`, run the `snap` function from the phase-verify skill's Review contract (a git tree of the whole working state, built with a temporary index — never stage or commit). It runs after your edits, so the next wave's review won't mistake them for implementer changes. `snap` exits non-zero or prints nothing (not a git repo, git error) → `SNAPSHOT: NONE` with the reason; never report an empty sha, and never fail the sync over it.
+7. End with `DOC SYNC RESULT:` (required)
 
 ---
 
@@ -110,6 +112,7 @@ FILE: {path relative to project root}
 SPRINTS_SYNCED: {comma-separated sprint ids, or NONE}
 TASKS_UPDATED: {total count}
 FAILURES: [sprint id + reason per line, or NONE]
+SNAPSHOT: {git tree sha of app_root after this sync, or NONE — reason}
 NOTES: [formatting issues, ambiguous rows, anything orchestrator should know]
 ```
 
@@ -128,6 +131,7 @@ Read and follow: the phase-doc-sync skill (loaded per runtime-adapter.md)
 Read and follow: the phase-planner skill (loaded per runtime-adapter.md)
 
 PROJECT ROOT: {project_root}
+APP ROOT: {app_root}
 PHASE FILE: {phase_file}
 
 PAYLOAD:
@@ -137,6 +141,7 @@ RULES:
 - Edit ONLY the phase file task Status columns for sprints in the payload
 - Batch edits — never one edit per task row
 - Do not modify acceptance criteria, dependencies, or overview prose
+- After editing, take the SNAPSHOT from APP ROOT (Execution step 6)
 - End with DOC SYNC RESULT block
 
 If SPRINT RESULT was missing for a sprint but orchestrator verified acceptance and sent mark_sprint_done, mark all incomplete tasks in that sprint as x.
@@ -171,5 +176,6 @@ FILE: docs/phases/Phase-11-Example-Feature.md
 SPRINTS_SYNCED: 11.2
 TASKS_UPDATED: 7
 FAILURES: NONE
+SNAPSHOT: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 NOTES: none
 ```

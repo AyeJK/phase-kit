@@ -1,0 +1,15 @@
+{
+  "name": "phase-kit",
+  "description": "phase-kit: phase → sprint → verified-wave orchestration skills for Claude",
+  "owner": {
+    "name": "Jeremy Kaye",
+    "url": "https://github.com/AyeJK"
+  },
+  "plugins": [
+    {
+      "name": "phase-kit",
+      "source": "./",
+      "description": "Plan phases, then let an orchestrator build them in parallel waves gated by independent verify, UI wave-test, and single-writer doc-sync sub-agents."
+    }
+  ]
+}
