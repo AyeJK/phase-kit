@@ -133,7 +133,7 @@ components:
 
 ## Acceptance bullets
 
-- {Observable, testable outcome — feeds phase-runner Verification.assert}
+- {Observable, testable outcome — feeds phase-builder Verification.assert}
 - {Observable, testable outcome}
 
 **Preview:** [{kebab-name}.html]({kebab-name}.html)

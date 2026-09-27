@@ -23,7 +23,7 @@ Two roots matter, and they are not always the same folder:
      2. {path B}
    Which one should sprint implementation and verify run against? (Or: multiple — I'll ask per-sprint if tasks touch different packages.)
    ```
-5. **In worktree mode** (phase-runner Step 0.5), re-resolve after the session enters the worktree: both roots become the worktree itself.
+5. **In worktree mode** (phase-builder Step 0.5), re-resolve after the session enters the worktree: both roots become the worktree itself.
 6. **If the user states paths explicitly** ("workspace root is X, app root is Y") — use those, skip detection entirely.
 
 ## Report before proceeding

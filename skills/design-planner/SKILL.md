@@ -1,11 +1,11 @@
 ---
 name: design-planner
-description: "Establishes visual design language and screen contracts between project scope docs and phase-planner. Produces docs/design/DESIGN.md (Google design.md spec), screen specs, HTML mockups (screens/*.html + index hub), and design-system.md for phase-runner. Use when the user wants to design UI before phase planning, lock a design system, write screen specs, review HTML mockups, or run the design pass after a scope/rebuild plan. Trigger phrases: design pass, design-planner, design the UI, design system, DESIGN.md, screen specs, visual direction, before phase planner."
+description: "Establishes visual design language and screen contracts between project scope docs and phase-planner. Produces docs/design/DESIGN.md (Google design.md spec), screen specs, HTML mockups (screens/*.html + index hub), and design-system.md for phase-builder. Use when the user wants to design UI before phase planning, lock a design system, write screen specs, review HTML mockups, or run the design pass after a scope/rebuild plan. Trigger phrases: design pass, design-planner, design the UI, design system, DESIGN.md, screen specs, visual direction, before phase planner."
 ---
 
 # Design Planner
 
-Establishes **visual language and screen contracts** after a scope/rebuild plan and **before** phase-planner. Output feeds phase-planner (screen references in sprints) and phase-runner (`design-system.md` for UI implementation and wave-test asserts).
+Establishes **visual language and screen contracts** after a scope/rebuild plan and **before** phase-planner. Output feeds phase-planner (screen references in sprints) and phase-builder (`design-system.md` for UI implementation and wave-test asserts).
 
 **Pipeline position:**
 
@@ -13,10 +13,10 @@ Establishes **visual language and screen contracts** after a scope/rebuild plan 
 Scope doc (what/why/architecture)
     → design-planner (this skill)
     → phase-planner (sprints)
-    → phase-runner (build)
+    → phase-builder (build)
 ```
 
-**Not this skill:** Architecture, API design, sprint breakdown, or implementation. Use scope docs + phase-planner + phase-runner for those. Use `product-planner` only for non-UI product exploration — not as a substitute for this step.
+**Not this skill:** Architecture, API design, sprint breakdown, or implementation. Use scope docs + phase-planner + phase-builder for those. Use `product-planner` only for non-UI product exploration — not as a substitute for this step.
 
 For file templates, token schema, and screen-spec format, see [reference.md](reference.md).
 
@@ -24,7 +24,7 @@ For file templates, token schema, and screen-spec format, see [reference.md](ref
 
 ## Step 1 — Resolve project layout
 
-Run once at the start. Same rules as phase-runner's `project-layout.md` — read that file if this project also uses phase-runner, otherwise resolve directly:
+Run once at the start. Same rules as phase-builder's `project-layout.md` — read that file if this project also uses phase-builder, otherwise resolve directly:
 
 | Path | Role |
 |------|------|
@@ -36,7 +36,7 @@ Run once at the start. Same rules as phase-runner's `project-layout.md` — read
 | File | Purpose |
 |------|---------|
 | `docs/design/DESIGN.md` | Canonical agent contract — Google [design.md](https://github.com/google-labs-code/design.md) spec |
-| `docs/design/design-system.md` | Expanded patterns — **phase-runner reads this path** |
+| `docs/design/design-system.md` | Expanded patterns — **phase-builder reads this path** |
 | `docs/design/screens/*.md` | Per-surface screen specs (acceptance criteria for phase-planner) |
 | `docs/design/screens/*.html` | **Reviewable HTML mockups** — one per screen + `index.html` hub |
 | `docs/design/screens/_theme.css` | Shared styles for the mockups — this project's own visual direction, established in Step 4 |
@@ -141,7 +141,7 @@ If lint fails, fix before proceeding. If the CLI is unavailable, self-check agai
 
 For each P0/P1 surface, create **both**:
 
-1. **Markdown spec** — `docs/design/screens/{kebab-name}.md` (acceptance criteria for phase-runner)
+1. **Markdown spec** — `docs/design/screens/{kebab-name}.md` (acceptance criteria for phase-builder)
 2. **HTML mockup** — `docs/design/screens/{kebab-name}.html` (visual review for the user)
 
 Use the templates in [reference.md](reference.md). Shared styles live in `docs/design/screens/_theme.css` (tokens, panels, buttons — reuse from an existing repo if this is a rebuild).
@@ -156,7 +156,7 @@ Each markdown spec must include:
 - Component list (names matching DESIGN.md)
 - **States matrix** — empty, loading, error, success, edge cases from scope doc
 - Copy rules — labels, empty states, forbidden phrases
-- **Acceptance bullets** — observable checks for phase-runner `Verification.assert`
+- **Acceptance bullets** — observable checks for phase-builder `Verification.assert`
 - **Preview:** link to sibling `.html` mockup
 
 Each HTML mockup must:
@@ -174,7 +174,7 @@ Do not duplicate token tables in screen specs — reference `DESIGN.md` sections
 
 ## Step 7 — Seed design-system.md
 
-Write or update `docs/design/design-system.md`. This is the **operational doc phase-runner injects** into UI implementation and wave-test.
+Write or update `docs/design/design-system.md`. This is the **operational doc phase-builder injects** into UI implementation and wave-test.
 
 Structure:
 
@@ -256,9 +256,9 @@ Use targeted edits. One write pass per operation when possible.
 | **Scope doc** | Input — product/architecture only |
 | **design-planner** | This skill — visual language + screens |
 | **phase-planner** | Sprints — references screen specs |
-| **phase-runner** | Build — reads `design-system.md`; wave-test asserts against it |
+| **phase-builder** | Build — reads `design-system.md`; wave-test asserts against it |
 | **A frontend-design-style skill, if available** | Direction workshop + optional prototypes only — not production UI |
-| **A ui-pattern skill, if available** | Implementation patterns during phase-runner — loses to project design docs |
+| **A ui-pattern skill, if available** | Implementation patterns during phase-builder — loses to project design docs |
 | **product-planner** | Non-UI product planning — do not use for design-system output |
 
 ---
@@ -284,4 +284,4 @@ Use targeted edits. One write pass per operation when possible.
 - **HTML monolith plan** — that's product-planner; use markdown screen specs instead
 - **Tokens only in design-system.md** — DESIGN.md must exist as the portable agent contract
 - **Generic AI aesthetics** — a default sans-serif + purple gradient unless the product explicitly calls for it
-- **Implementing production components in this skill** — prototypes are static HTML only; code ships in phase-runner
+- **Implementing production components in this skill** — prototypes are static HTML only; code ships in phase-builder

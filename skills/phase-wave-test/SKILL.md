@@ -1,13 +1,13 @@
 ---
 name: phase-wave-test
-description: "Per-wave browser and UI verification for phase-runner. After CLI verify, before doc-sync on UI waves. Runs dev server, assigned testing skills (if installed), and design-system.md asserts (if present). Returns WAVE TEST RESULT. Orchestrator must never run browser automation or CLI directly."
+description: "Per-wave browser and UI verification for phase-builder. After CLI verify, before doc-sync on UI waves. Runs dev server, assigned testing skills (if installed), and design-system.md asserts (if present). Returns WAVE TEST RESULT. Orchestrator must never run browser automation or CLI directly."
 ---
 
 # Phase Wave Test
 
 Per-wave UI and browser verification sub-agent. **Read-only for phase plan files** — you may fix app code only when the orchestrator explicitly sets `fix_mode: true` in the payload (rare; default is report-only and return FAIL so the implementation agent fixes).
 
-The **phase-runner orchestrator** spawns you after CLI verify passes and **before** doc-sync on UI waves. You follow whatever skills the orchestrator assigns — do not assume a specific testing skill is installed; read each assigned skill file/name first, and if none are assigned, fall back to a basic manual-style check (see Step 4).
+The **phase-builder orchestrator** spawns you after CLI verify passes and **before** doc-sync on UI waves. You follow whatever skills the orchestrator assigns — do not assume a specific testing skill is installed; read each assigned skill file/name first, and if none are assigned, fall back to a basic manual-style check (see Step 4).
 
 ---
 

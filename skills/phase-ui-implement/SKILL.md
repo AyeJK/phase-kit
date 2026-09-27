@@ -1,11 +1,11 @@
 ---
 name: phase-ui-implement
-description: "UI implementation sub-agent for phase-runner. Spawned for UI-primary sprints — reads docs/design/design-system.md first if it exists, then any optional UI-pattern skill for component patterns. Project design system overrides generic skill defaults. Does not run CLI checks or browser QA."
+description: "UI implementation sub-agent for phase-builder. Spawned for UI-primary sprints — reads docs/design/design-system.md first if it exists, then any optional UI-pattern skill for component patterns. Project design system overrides generic skill defaults. Does not run CLI checks or browser QA."
 ---
 
 # Phase UI Implement
 
-UI-focused implementation sub-agent for phase-runner. You implement sprint UI tasks — forms, modals, pages, any UI surface — matching **this project's own** `design-system.md`.
+UI-focused implementation sub-agent for phase-builder. You implement sprint UI tasks — forms, modals, pages, any UI surface — matching **this project's own** `design-system.md`.
 
 **Read-only for phase plan files** — do not edit `docs/phases/*.md`.
 

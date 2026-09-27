@@ -1,13 +1,13 @@
 ---
 name: phase-verify
-description: "Per-wave CLI verification for phase-runner. Spawned as a sub-agent after implementation calls return — runs the project's build/typecheck/test commands and sprint acceptance grep patterns, then reviews the wave diff against a contract: a verdict per acceptance criterion, test-integrity checks, and scope against each sprint's Module column. Returns structured VERIFY RESULT. Orchestrator must never run CLI checks directly for verification."
+description: "Per-wave CLI verification for phase-builder. Spawned as a sub-agent after implementation calls return — runs the project's build/typecheck/test commands and sprint acceptance grep patterns, then reviews the wave diff against a contract: a verdict per acceptance criterion, test-integrity checks, and scope against each sprint's Module column. Returns structured VERIFY RESULT. Orchestrator must never run CLI checks directly for verification."
 ---
 
 # Phase Verify
 
 Per-wave CLI verification sub-agent. **Read-only for phase plan files** — do not fix app code unless the orchestrator sets `fix_mode: true` (default `false` → report FAIL so the implementation agent fixes).
 
-The **phase-runner orchestrator** spawns you after implementation calls in a wave return. On **data-only** waves you gate doc-sync; on **UI** waves you gate wave-test (doc-sync runs only after wave-test passes).
+The **phase-builder orchestrator** spawns you after implementation calls in a wave return. On **data-only** waves you gate doc-sync; on **UI** waves you gate wave-test (doc-sync runs only after wave-test passes).
 
 ---
 
@@ -19,7 +19,7 @@ The orchestrator MUST:
 2. Wait for `VERIFY RESULT:` before doc-sync (data-only) or before wave-test (UI waves)
 3. On `STATUS: FAIL` — orchestrator re-spawns affected implementation sprint(s) with `FAILURES`, then re-spawns verify until it passes the gate (`PASS`, or `PARTIAL` outside strict mode) or hits the retry limit (default 3, then escalate to user)
 4. Log only one line: `✓ Verify — {sprint ids} ({summary}; criteria {met}/{total} met)` — no CLI commands run directly in the orchestrator thread
-5. Pass `diff_base` (the `SNAPSHOT` from the doc-sync that ended the previous wave, or from a baseline call — see phase-runner "Diff baseline") so the review sees only this wave's changes
+5. Pass `diff_base` (the `SNAPSHOT` from the doc-sync that ended the previous wave, or from a baseline call — see phase-builder "Diff baseline") so the review sees only this wave's changes
 
 The orchestrator MUST NOT run build/typecheck/test commands, or grep for acceptance, during an active phase run.
 

@@ -1,9 +1,9 @@
 ---
-name: phase-runner
+name: phase-builder
 description: "Orchestrates automated sprint implementation from phase plans — e.g. 'run phase 1', 'implement sprint 1.3', 'run phase 4 in a worktree'. Optional worktree mode isolates a phase run on its own branch so two phases can run at once. Spawns phase-ui-implement (UI sprints + docs/design/design-system.md), general implementation (data/mixed), phase-verify, phase-wave-test (design asserts), phase-doc-sync. Skill-router per sprint. Clean orchestrator thread. Max 3 retries per gate then escalate. Pauses at blockers and phase boundaries."
 ---
 
-# Phase Runner
+# Phase Builder
 
 Orchestrates sprint implementation from phase plan files at `docs/phases/Phase-{N}-*.md`. Reads the plan, identifies incomplete sprints, **groups sprints into parallel waves when safe**, spawns one sub-agent per sprint (multiple sub-agent calls in the same turn when running a wave), processes results, and manages human checkpoints at blockers and phase boundaries. **Default remains sequential** when the dependency graph, overlap risk, or sprint semantics do not justify parallelism.
 
@@ -13,13 +13,13 @@ Orchestrates sprint implementation from phase plan files at `docs/phases/Phase-{
 
 ## Step 0 — Resolve the runtime
 
-Read **`runtime-adapter.md`** first, before anything else. It tells you which tool spawns sub-agents in this session, what subagent type to use, and how to load the other phase-kit skills (by name or by path). Every "spawn a Task" and "read skill X" instruction below assumes you've already done this — substitute the resolved tool/type/loading-mechanism throughout.
+Read **`runtime-adapter.md`** first, before anything else. It tells you which tool spawns sub-agents in this session, what subagent type to use, and how to load the other Phase Runner skills (by name or by path). Every "spawn a Task" and "read skill X" instruction below assumes you've already done this — substitute the resolved tool/type/loading-mechanism throughout.
 
 ---
 
 ## Step 0.5 — Worktree mode (opt-in)
 
-**Only when the user asks for it** — "run phase 4 in a worktree", "run this in parallel with the other session", "resume phase 4 in its worktree". Otherwise skip this step entirely: a normal run works in the current checkout, and phase-runner already parallelizes independent sprints inside a phase. Worktree mode exists for running **two phases at once** in two sessions without their verify gates tripping over each other's half-written code.
+**Only when the user asks for it** — "run phase 4 in a worktree", "run this in parallel with the other session", "resume phase 4 in its worktree". Otherwise skip this step entirely: a normal run works in the current checkout, and phase-builder already parallelizes independent sprints inside a phase. Worktree mode exists for running **two phases at once** in two sessions without their verify gates tripping over each other's half-written code.
 
 **Find the repo (`repo_root`) — check before doing anything:**
 
@@ -789,7 +789,7 @@ docs/phases/Phase-3-Integrations.md
 ...
 ```
 
-The exact number of phases and their names are entirely project-specific — phase-planner creates these as the project is scoped. Nothing about phase-runner assumes a fixed count or fixed names.
+The exact number of phases and their names are entirely project-specific — phase-planner creates these as the project is scoped. Nothing about phase-builder assumes a fixed count or fixed names.
 
 ---
 

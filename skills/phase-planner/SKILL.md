@@ -1,6 +1,6 @@
 ---
 name: phase-planner
-description: Creates and maintains phase plan documents in docs/phases/ files. Use when turning design chat into a structured phase plan, or when adding, removing, editing, moving, or changing task status in sprint plans, viewing sprint or phase progress, or restructuring sprints. Also used by the phase-doc-sync sub-agent when phase-runner applies SPRINT RESULT updates after each implementation wave.
+description: Creates and maintains phase plan documents in docs/phases/ files. Use when turning design chat into a structured phase plan, or when adding, removing, editing, moving, or changing task status in sprint plans, viewing sprint or phase progress, or restructuring sprints. Also used by the phase-doc-sync sub-agent when phase-builder applies SPRINT RESULT updates after each implementation wave.
 ---
 
 # Phase Planner
@@ -181,7 +181,7 @@ Add a new sprint section to a phase file.
 
 **Include on every new sprint going forward.** Do not retroactively add to completed phases unless the user asks.
 
-Placed after `### Dependencies` (before the sprint `---` divider). Gives phase-runner / skill-router explicit test scope instead of inferring routes and skills from task Module paths.
+Placed after `### Dependencies` (before the sprint `---` divider). Gives phase-builder / skill-router explicit test scope instead of inferring routes and skills from task Module paths.
 
 **UI sprints** automatically use `docs/design/design-system.md` via `phase-ui-implement` (implementation) and wave-test (design asserts) — when that file exists. No separate `design:` field — always that file.
 
@@ -201,7 +201,7 @@ Placed after `### Dependencies` (before the sprint `---` divider). Gives phase-r
 |-----|----------|---------|
 | `cli:` | Yes (or infer from stack — see project-layout.md) | Command **phase-verify** sub-agent runs until exit 0 |
 | `ui:` | When sprint has UI | App route(s) for wave-test — comma-separate multiple |
-| `skills:` | When UI or QA | Skill names phase-runner assigns to wave-test (e.g. `visual-qa-testing`, `responsive-testing`) — only if such skills are actually available; see skill-router.md |
+| `skills:` | When UI or QA | Skill names phase-builder assigns to wave-test (e.g. `visual-qa-testing`, `responsive-testing`) — only if such skills are actually available; see skill-router.md |
 | `viewports:` | Optional | Breakpoints for responsive testing; omit to use a sensible default (375–1536) |
 | `skip-ui:` | Data-only sprints | `true` — no wave-test after this sprint's wave |
 | `assert:` | Recommended for UI | Short browser checklist — what PASS means |
@@ -305,9 +305,9 @@ Update multiple tasks across sprints in a single operation.
 
 ---
 
-### 11. Apply SPRINT RESULT (phase-runner doc-sync)
+### 11. Apply SPRINT RESULT (phase-builder doc-sync)
 
-**Who runs this:** The **phase-doc-sync** sub-agent, not the phase-runner orchestrator. See `runtime-adapter.md` in the phase-runner skill for how doc-sync is loaded/spawned in your environment.
+**Who runs this:** The **phase-doc-sync** sub-agent, not the phase-builder orchestrator. See `runtime-adapter.md` in the phase-builder skill for how doc-sync is loaded/spawned in your environment.
 
 **When:** After each implementation wave, from structured `SPRINT RESULT` data the orchestrator parsed.
 

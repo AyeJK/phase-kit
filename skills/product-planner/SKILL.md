@@ -187,7 +187,7 @@ If the user asks to proceed to phase planning immediately after the plan is crea
 2. Invoke the `phase-planner` skill with the plan as context
 3. The phase plans go to `docs/phases/Phase-{N}-{Name}.md` as normal markdown — the HTML plan is the *input spec*, not the output format
 
-The HTML plan file persists as a reference artifact. Implementation agents spawned by `phase-runner` should be pointed at it for full context.
+The HTML plan file persists as a reference artifact. Implementation agents spawned by `phase-builder` should be pointed at it for full context.
 
 ---
 

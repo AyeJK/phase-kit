@@ -40,7 +40,7 @@ For each wave (one or more sprints running together):
 
 ## 5. Include the plan in the execution report
 
-Alongside the wave plan (Step 2.5 of phase-runner), show:
+Alongside the wave plan (Step 2.5 of phase-builder), show:
 
 ```
 Skill plan:

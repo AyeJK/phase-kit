@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# phase-kit init — scaffolds the docs/phases + docs/design convention into a project.
+# Phase Runner init — scaffolds the docs/phases + docs/design convention into a project.
 #
 # Usage:
 #   ./init.sh [target-dir]
@@ -67,7 +67,7 @@ else
 _Last updated: {date}. Linked from: DESIGN.md (once design-planner has run)._
 
 This file is empty until a design pass runs (see the design-planner skill), or
-until you fill it in by hand. phase-runner reads this path for UI sprints —
+until you fill it in by hand. phase-builder reads this path for UI sprints —
 if it's empty or missing, UI implementation falls back to matching whatever
 components already exist in the codebase.
 

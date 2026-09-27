@@ -1,17 +1,17 @@
 ---
 name: phase-doc-sync
-description: "Applies sprint implementation results to docs/phases/ phase plan files. Used by phase-runner as a sub-agent after each implementation wave — updates task Status columns from structured SPRINT RESULT payloads in batched edits. Orchestrator must never edit phase files directly during a phase run; spawn this instead. Also use when the user asks to sync phase docs from sprint results without re-implementing code."
+description: "Applies sprint implementation results to docs/phases/ phase plan files. Used by phase-builder as a sub-agent after each implementation wave — updates task Status columns from structured SPRINT RESULT payloads in batched edits. Orchestrator must never edit phase files directly during a phase run; spawn this instead. Also use when the user asks to sync phase docs from sprint results without re-implementing code."
 ---
 
 # Phase Doc Sync
 
 Updates `docs/phases/Phase-*.md` task tables from structured sprint results. **Read-only for implementation code** — only touches phase plan markdown.
 
-The **phase-runner orchestrator** spawns you as a sub-agent after each implementation wave. The orchestrator parses `SPRINT RESULT` blocks and passes a structured payload; you apply edits using **phase-planner** rules.
+The **phase-builder orchestrator** spawns you as a sub-agent after each implementation wave. The orchestrator parses `SPRINT RESULT` blocks and passes a structured payload; you apply edits using **phase-planner** rules.
 
 ---
 
-## Orchestrator contract (phase-runner)
+## Orchestrator contract (phase-builder)
 
 The orchestrator MUST:
 
@@ -69,7 +69,7 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
 
 ## Execution steps
 
-1. Load the **phase-planner** skill (per runtime-adapter.md in the phase-runner skill) only if a table needs migrating or its format is unclear. A table that already has a Status column doesn't need it.
+1. Load the **phase-planner** skill (per runtime-adapter.md in the phase-builder skill) only if a table needs migrating or its format is unclear. A table that already has a Status column doesn't need it.
 2. **Don't read the whole phase file.** Grep it for the sprint headers (`^# Sprint`) and the task rows (`^\| .* \| \d+ \|`) with line numbers, then read only the `### Tasks` table of each sprint in the payload (offset/limit).
 3. For each sprint in the payload (ascending `id`):
    - Locate section `# Sprint {id} — {title}`

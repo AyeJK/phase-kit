@@ -1,4 +1,4 @@
-# phase-kit
+# Phase Runner
 
 A set of Claude skills for running software projects as phases → sprints → verified waves, with an AI orchestrator doing the implementation loop and a human doing the checkpoints.
 
@@ -11,7 +11,7 @@ If you've ever had an agent "finish" a feature that doesn't build, or watched a 
 | `product-planner` | Turns a rough idea into a rich HTML plan doc — options considered, data flow, open questions. Optional first step. |
 | `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. Optional, for UI-heavy projects. |
 | `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. This is the one you'll talk to most for "mark task 3 done" or "what's left in sprint 2.1." |
-| `phase-runner` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
+| `phase-builder` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
 | `phase-verify` | Sub-agent: runs your build/test/typecheck command, then reviews the wave's diff — a met/not-met verdict with evidence for every acceptance criterion, a check that no test was deleted or weakened, and a check that changes stay inside each sprint's Module column. Serious findings fail the wave and trigger a retry. Never runs inline in the orchestrator thread. |
 | `phase-wave-test` | Sub-agent: browser/UI verification for UI sprints, using your project's own `design-system.md` if one exists. |
 | `phase-doc-sync` | Sub-agent: the *only* thing allowed to write status changes back into the phase file. Batches edits, never touches acceptance criteria or task text. |
@@ -19,7 +19,7 @@ If you've ever had an agent "finish" a feature that doesn't build, or watched a 
 
 ## Why sub-agents, and why the strict handoff order
 
-The orchestrator (`phase-runner`) never writes code, never runs your test suite, and never edits the phase file directly. Every one of those actions happens in a sub-agent with a narrow, single-purpose prompt, and the orchestrator only advances after reading back a structured result block (`SPRINT RESULT`, `VERIFY RESULT`, `WAVE TEST RESULT`, `DOC SYNC RESULT`). This is deliberate:
+The orchestrator (`phase-builder`) never writes code, never runs your test suite, and never edits the phase file directly. Every one of those actions happens in a sub-agent with a narrow, single-purpose prompt, and the orchestrator only advances after reading back a structured result block (`SPRINT RESULT`, `VERIFY RESULT`, `WAVE TEST RESULT`, `DOC SYNC RESULT`). This is deliberate:
 
 - **The orchestrator thread stays cheap and legible.** No command output, no tool logs — just one-line status per gate. You can read what happened in a long run without wading through build logs.
 - **Nothing is "done" because an agent said so.** Verify and wave-test are separate passes with their own pass/fail contract. Implementation can't grade its own homework.
@@ -46,7 +46,7 @@ your-project/
     └── src/
 ```
 
-Two roots matter and phase-runner resolves both automatically at the start of every run (see `skills/phase-runner/project-layout.md`):
+Two roots matter and phase-builder resolves both automatically at the start of every run (see `skills/phase-builder/project-layout.md`):
 
 - **workspace_root** — where `docs/` lives
 - **app_root** — where your code and its manifest file live
@@ -57,7 +57,7 @@ Run `scaffold/init.sh [target-dir]` to lay down the `docs/phases/` and `docs/des
 
 ## Platform support
 
-This kit was originally built against Cursor's skill/sub-agent conventions and has been generalized to run on any Claude Code–compatible agent runtime (Cursor, Claude Code, or hosts built on the Claude Agent SDK). The only environment-specific pieces — which tool spawns a sub-agent, what type name to give it, and how skill files get loaded — are resolved once per run by `skills/phase-runner/runtime-adapter.md`, which discovers what's actually available in your session rather than assuming a specific tool. See that file if you're adding support for a new environment.
+This kit was originally built against Cursor's skill/sub-agent conventions and has been generalized to run on any Claude Code–compatible agent runtime (Cursor, Claude Code, or hosts built on the Claude Agent SDK). The only environment-specific pieces — which tool spawns a sub-agent, what type name to give it, and how skill files get loaded — are resolved once per run by `skills/phase-builder/runtime-adapter.md`, which discovers what's actually available in your session rather than assuming a specific tool. See that file if you're adding support for a new environment.
 
 ## Optional dependencies
 
@@ -68,11 +68,11 @@ This kit was originally built against Cursor's skill/sub-agent conventions and h
 **Claude Code (plugin):**
 
 ```
-/plugin marketplace add AyeJK/phase-kit
-/plugin install phase-kit@phase-kit
+/plugin marketplace add AyeJK/phase-runner
+/plugin install phase-runner@phase-runner
 ```
 
-Skills are then available as `phase-kit:phase-runner`, `phase-kit:phase-planner`, etc. The runtime adapter detects the prefix automatically.
+Skills are then available as `phase-runner:phase-builder`, `phase-runner:phase-planner`, etc. The runtime adapter detects the prefix automatically.
 
 **Manual (Cursor, or any Claude Code–compatible runtime):** clone the repo and copy `skills/*` into `.claude/skills/`, `.cursor/skills/`, or your home-level equivalent.
 
@@ -81,7 +81,7 @@ Skills are then available as `phase-kit:phase-runner`, `phase-kit:phase-planner`
 1. `./scaffold/init.sh path/to/your/project`
 2. Talk to `phase-planner` to fill in real sprints (or ask an LLM to draft a full phase plan from a spec, then have phase-planner review the format)
 3. Optionally run `design-planner` first if the phase has meaningful UI surface area
-4. `run phase 1` — hands off to `phase-runner`
+4. `run phase 1` — hands off to `phase-builder`
 
 ## Status conventions
 
