@@ -97,7 +97,7 @@ Two roots matter and phase-builder resolves both automatically at the start of e
 
 Small projects often have these be the same folder. Larger ones split them — useful when you want the phase history to survive a full rewrite of the app itself.
 
-Run `scaffold/init.sh [target-dir]` to lay down the `docs/phases/` and `docs/design/` structure with starter files in a new or existing project.
+You don't need to create these folders. `phase-planner` and `design-planner` make them the first time they run.
 
 ## Platform support
 
