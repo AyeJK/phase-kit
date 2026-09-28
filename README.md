@@ -37,6 +37,23 @@ A failed wave retries the same sprint with the failure attached, up to three tim
 3. **Break it into phases.** Ask `phase-planner` to turn the product plan into phase plans, split into sprints and tasks, each with acceptance criteria.
 4. **Build it.** With the docs in place, say something like *"implement phase 1"*. `phase-builder` gets to work, and checks in with you when it hits a blocker or finishes the phase.
 
+## How it compares
+
+| | Phase Runner | [Superpowers](https://github.com/obra/superpowers) | [Spec Kit](https://github.com/github/spec-kit) | [GSD](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) |
+|---|---|---|---|---|---|
+| **Idea → product plan** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Design system before code** | ✅ with HTML mockups | ❌ | ❌ | ✅ UI contract + HTML sketches | ✅ UX spec |
+| **Parallel build** | ✅ waves | ❌ sequential by design | — | ✅ waves | — |
+| **A separate agent reviews the work** | ✅ every wave | ✅ every task | ❌ the implementer checks its own work | 🟡 on demand | 🟡 on demand |
+| **Automatic retry on failure** | ✅ up to 3, then you | ✅ up to 5 rounds | 🟡 you repeat implement → converge | 🟡 on demand | — |
+| **Browser QA on UI work** | ✅ every UI wave | ❌ | ❌ | 🟡 on demand, with a browser MCP | 🟡 generates E2E tests |
+
+✅ built into the workflow · 🟡 a command you run · ❌ not included · — not documented
+
+Most of these pieces exist somewhere. Phase Runner is the one where all of them run on their own, on every wave, inside the build loop.
+
+<sub>Checked against each project's README and docs on Sep 27, 2026. Spot something out of date? Open an issue.</sub>
+
 ## What's in here
 
 ### Skills you use
@@ -47,7 +64,7 @@ These are the four you talk to. Everything else runs on its own.
 |---|---|
 | `product-planner` | Turns a rough idea into a rich HTML plan doc — options considered, data flow, open questions. Optional first step. |
 | `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. Optional, for UI-heavy projects. |
-| `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. This is the one you'll talk to most for "mark task 3 done" or "what's left in sprint 2.1." |
+| `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. |
 | `phase-builder` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
 
 ### Skills phase-builder runs for you
