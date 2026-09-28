@@ -67,6 +67,23 @@ Do this migration atomically with the requested edit. Never leave a table half-m
 
 ## Operations
 
+### 0. Create Phase
+
+Turn a plan (a chat, a spec, a product-planner doc) into a new phase file. This is the entry point on a fresh project.
+
+**Input:** What the phase delivers, plus whatever plan material the user has.
+
+**Steps:**
+1. Look for `docs/phases/` at the workspace root. If it doesn't exist, create it. No setup script is needed first
+2. Pick the phase number: one higher than the highest existing `Phase-{N}-*.md`, or `1` if there are none
+3. Write `docs/phases/Phase-{N}-{Name}.md` from the full template in [reference.md](reference.md): phase goal, then sprints, each with Goal, Tasks, Acceptance Criteria, Dependencies and **Verification**
+4. Every task starts at Status `—`. Use the sparse-row rules for Module and Reference
+5. Show the user the sprint list and ask them to confirm before `run phase {N}`
+
+Never overwrite an existing phase file. If `Phase-{N}` already exists, use the next number or ask.
+
+---
+
 ### 1. Set Task Status
 
 Change a task's status. This is the most common operation.
@@ -371,3 +388,4 @@ The user may use informal language. Map these to operations:
 | "what's blocked" | List where Status = BLOCKED |
 | "what's left in X" | List where Status = — in sprint X |
 | "new sprint in phase X" | Add Sprint |
+| "plan phase X" / "turn this into a phase" / "start a phase plan" | Create Phase |

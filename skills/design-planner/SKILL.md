@@ -50,6 +50,8 @@ Design pass layout:
   scope input:    {path to scope doc or "conversation"}
 ```
 
+If `docs/design/` doesn't exist, create it and `docs/design/screens/` under `workspace_root`. No setup script is needed first.
+
 If `docs/design/` already exists, read all files before editing. Preserve locked decisions unless the user asks to revise.
 
 ---
