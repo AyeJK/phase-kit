@@ -2,7 +2,7 @@
  * The app root: the live stream, the router and the unified shell
  * (design-system.md "Unified interface").
  *
- * The shell is the 56px top bar (wordmark only), the filter row under it,
+ * The shell is the 56px top bar (wordmark and settings gear), the filter row under it,
  * the connection-lost banner while disconnected, then the view:
  *
  * | Route           | View |

@@ -18,9 +18,9 @@ import './styles/app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
-import { followSystemTheme } from './theme.js';
+import { followTheme } from './theme.js';
 
-followSystemTheme();
+followTheme();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('phase-viewer: #root is missing from index.html');

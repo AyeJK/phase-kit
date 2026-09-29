@@ -189,9 +189,11 @@ test.describe('multi-phase fixture', () => {
     await open(page, `${loop.baseURL}/`);
     await expect(page).toHaveURL(`${loop.baseURL}/`);
 
-    // Top bar: the wordmark and nothing else.
+    // Top bar: the wordmark and the settings gear, nothing else.
     await expect(page.locator('.app-head').getByRole('img', { name: 'Phase Runner' })).toBeVisible();
-    await expect(page.locator('.app-head a, .app-head button, .app-head nav')).toHaveCount(0);
+    await expect(page.locator('.app-head a, .app-head nav')).toHaveCount(0);
+    await expect(page.locator('.app-head button')).toHaveCount(1);
+    await expect(page.locator('.app-head button')).toHaveAccessibleName('Settings');
 
     const cols = page.locator('a[data-kan-col]');
     expect(await attrs(cols, 'data-kan-col')).toEqual(project.phases.map((p) => String(p.number)));

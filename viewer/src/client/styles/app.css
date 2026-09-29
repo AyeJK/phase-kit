@@ -62,6 +62,61 @@
   margin: 0 auto 20px;
 }
 
+/* Settings (shell/SettingsMenu.tsx): the gear at the right, its dropdown under it. */
+.settings {
+  position: relative;
+  margin-left: auto;
+}
+.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.settings-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.settings-btn:hover,
+.settings-btn[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px -8px var(--scrim);
+}
+.settings-label {
+  font: 500 11px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+/* The Kanban | List toggle's look (shell/shell.css), full width in the dropdown. */
+.view-toggle.theme-toggle {
+  align-self: stretch;
+  margin-left: 0;
+}
+.theme-toggle button {
+  flex: 1;
+}
+
 /* ---------- Status bar ---------- */
 
 /* Status bar (components/StatusSegments.tsx): one segment per task status,

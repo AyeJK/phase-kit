@@ -1,7 +1,8 @@
 /**
  * The unified shell's own states (design-system.md "Loading", "Connection
  * lost", "Unified states"): the loading block before the first snapshot, and
- * the connection-lost banner while the server is away. The kanban, filter
+ * the connection-lost banner while the server is away, and the theme choice in
+ * the top bar's settings menu. The kanban, filter
  * row, panel, list view and their 375 px layouts are in `board.spec.ts`.
  *
  * The loading test holds back the event stream on the shared `webServer`.
@@ -41,6 +42,49 @@ test.describe('loading', () => {
     await expect(page.getByTestId('kanban')).toBeVisible({ timeout: 15_000 });
     await expect(loading).toHaveCount(0);
     await expect(page.locator('.app')).toHaveAttribute('data-connection', 'live');
+  });
+});
+
+test.describe('theme', () => {
+  test('the settings gear picks Light, Dark or System, and the choice is remembered', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
+    const html = page.locator('html');
+    await expect(html).toHaveAttribute('data-theme', 'dark');
+
+    const gear = page.locator('.app-head').getByRole('button', { name: 'Settings' });
+    await expect(gear).toHaveAttribute('aria-expanded', 'false');
+    await gear.click();
+    await expect(gear).toHaveAttribute('aria-expanded', 'true');
+    const menu = page.getByTestId('settings-menu');
+    const theme = menu.getByRole('group', { name: 'Theme' });
+    await expect(theme.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+
+    // Light applies at once and the menu stays open.
+    await theme.getByRole('button', { name: 'Light' }).click();
+    await expect(html).toHaveAttribute('data-theme', 'light');
+    await expect(theme.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(menu).toBeVisible();
+
+    // Escape closes it and puts focus back on the gear.
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(gear).toBeFocused();
+
+    // Remembered across a reload, over the OS setting.
+    await page.reload();
+    await expect(html).toHaveAttribute('data-theme', 'light');
+
+    // System follows the OS again, including when it changes.
+    await gear.click();
+    await theme.getByRole('button', { name: 'System' }).click();
+    await expect(html).toHaveAttribute('data-theme', 'dark');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(html).toHaveAttribute('data-theme', 'light');
+
+    // A click outside closes the menu.
+    await page.getByTestId('filter-row').click({ position: { x: 5, y: 5 } });
+    await expect(menu).toHaveCount(0);
   });
 });
 
