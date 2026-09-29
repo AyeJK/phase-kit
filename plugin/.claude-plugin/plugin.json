@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "phase-runner",
+  "description": "Run software projects as phases → sprints → verified waves. An orchestrator spawns implementation sub-agents; nothing counts as done until separate verify and UI wave-test gates pass.",
+  "author": {
+    "name": "Jeremy Kaye",
+    "url": "https://github.com/AyeJK"
+  },
+  "homepage": "https://github.com/AyeJK/phase-runner",
+  "repository": "https://github.com/AyeJK/phase-runner",
+  "license": "MIT",
+  "keywords": ["orchestration", "sub-agents", "planning", "sprints", "verification", "design-system", "phase-builder"]
+}
