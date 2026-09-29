@@ -18,7 +18,7 @@ The orchestrator MUST:
 1. Assign skill references in the payload (`skills_to_follow`) — only ones actually available in this environment, per skill-router.md
 2. Spawn **one** wave-test call per UI wave (not per sprint), and a **fresh** one each wave — never continue a previous wave's tester
 3. Set `tier`: `full` on the first test of a wave, `regression` with `retest_only` on retries, `light` when the wave adds no new visual surface
-4. Pass `harness_doc` and `design_sections`
+4. Pass `harness_doc`, `design_sections`, `e2e_specs` (from the last passing `VERIFY RESULT`) and `screenshot_dir`
 5. Wait for `WAVE TEST RESULT:` before orchestrator runs doc-sync
 6. On `STATUS: FAIL` — orchestrator re-spawns implementation, re-runs verify, then re-spawns wave-test until `PASS` or retry limit (default 3, then escalate to user)
 7. Log only one line: `✓ Wave test — {sprint ids} ({summary})` — no browser automation or CLI run directly in the orchestrator thread
@@ -51,6 +51,8 @@ The orchestrator MUST NOT run browser automation, start dev servers, or read too
   "harness_doc": "{app_root}/docs/testing/wave-test-harness.md",
   "tier": "full | regression | light",
   "retest_only": ["failures from the previous attempt — regression tier only"],
+  "e2e_specs": ["tests/e2e/settings.spec.ts"],
+  "screenshot_dir": "/path/to/workspace-root/docs/phases/.runs/screenshots/phase-5/wave-2/",
   "run_log": { "path": "/path/to/workspace-root/docs/phases/.runs/phase-5.jsonl", "phase": 5, "wave": 2, "attempt": 1, "max": 3 },
   "fix_mode": false
 }
@@ -60,7 +62,9 @@ The orchestrator MUST NOT run browser automation, start dev servers, or read too
 |-------|---------|
 | `project_root` | **app_root** — dev server, build tooling, browser tests |
 | `workspace_root` | Coordination folder |
-| `skills_to_follow` | Paths or names — **read each one before testing**; may be empty if none installed |
+| `skills_to_follow` | Absolute `SKILL.md` paths (Read them) or exact names (load with the skill tool) — **read each one before testing**; may be empty if none installed. Never search the disk for one; if a path doesn't open or a name doesn't load, note it and carry on without it |
+| `e2e_specs` | Spec files in this wave's diff that verify already ran and saw pass. Read them (they're short) before testing; see "Don't repeat verify" |
+| `screenshot_dir` | Absolute folder for every screenshot you take. Create it if missing |
 | `design_system_doc` | **`{workspace_root}/docs/design/design-system.md` only**, and only when present |
 | `test_urls` | Routes to open; infer from sprint tasks if omitted |
 | `viewports` | Default all five from a standard responsive check if omitted |
@@ -77,11 +81,21 @@ The orchestrator MUST NOT run browser automation, start dev servers, or read too
 
 | Tier | When the orchestrator picks it | Shape | Budget |
 |---|---|---|---|
-| **full** | First test of a new or reworked screen | Every viewport in `viewports`, every acceptance assert, design asserts, one screenshot per viewport | ~60 tool calls |
+| **full** | First test of a new or reworked screen | Acceptance asserts the e2e specs don't cover, and design asserts. Screenshot the narrowest viewport and one desktop viewport (plus the other theme, if the design system has two); at the remaining viewports only run a DOM check (horizontal overflow, key elements present), and skip it when an e2e spec already asserts it | ~40 tool calls |
 | **regression** | A retry after FAIL | `retest_only` checks, plus a smoke load of each `test_url`. Narrowest viewport and one desktop viewport only. Screenshot only what changed | ~20 tool calls |
 | **light** | UI wave with no new visual surface (copy, wiring, a flag) | One viewport, DOM/HTTP asserts, screenshot only on failure | ~10 tool calls |
 
 The budget is a guide, not a hard stop. If you're about to pass it, finish the checks that matter most and say in `NOTES` what you left untested — don't keep going. **Never re-test a check that passed in an earlier attempt unless this retry touched it.**
+
+### Don't repeat verify
+
+Verify has already run the project's full test suite, including every spec in `e2e_specs`, and they passed. Anything those specs assert — an element renders, a route navigates, no horizontal scroll at 375px, a banner appears for a fixture — is covered. Don't re-check it in the browser. Your job is what a spec can't judge:
+
+- Does it look right against the project's design system (spacing, type, colour, states), judged from screenshots
+- Acceptance notes no spec asserts
+- Console errors and failed network requests while you look around
+
+If `e2e_specs` is empty or missing, nothing is covered and the tier applies as written.
 
 ---
 
@@ -90,7 +104,7 @@ The budget is a guide, not a hard stop. If you're about to pass it, finish the c
 Every step you take re-reads everything you've read so far, so what you pull into context costs you on every later step.
 
 - **Design system:** grep its headings (`^#`) first, then read only the sections in `design_sections`, plus any other heading that's clearly about what you're testing. Read each section once. Never read the whole file.
-- **Screenshots:** save them to disk. Only open one when a check needs your eyes on it.
+- **Screenshots:** save every one to `screenshot_dir` by passing its absolute path as the filename (e.g. `{screenshot_dir}/overview-375.png`). If the tool reports saving somewhere else, open it from the path it reports and note that in the harness doc. Never search the disk for a screenshot. Only open one when a check needs your eyes on it.
 - **Logs:** tail and grep dev-server and console logs. Never read a whole log.
 - **Don't read other agents' transcripts.** If you're resuming after an interruption, the orchestrator tells you what state to expect.
 - **Don't read source files** to find out how the app works if the harness doc answers it. Read source only to trace a specific failure.
@@ -100,7 +114,7 @@ Every step you take re-reads everything you've read so far, so what you pull int
 ## Execution steps
 
 1. **Read `harness_doc`** if it exists. It's what makes a test cheap: how to start the app, how to sign in as each role, which seed data to use, what not to touch. If it doesn't exist, work those out, and then **create it** (see "Harness doc" below) so the next wave doesn't have to.
-2. **Read assigned skills**, if any, in payload order. Follow their workflows at the depth `tier` allows.
+2. **Read assigned skills**, if any, in payload order: Read a path, load a name with the skill tool. Follow their workflows at the depth `tier` allows. Then read the `e2e_specs` files, so you know what's already covered.
 3. **Read the `design_sections` of `design_system_doc`**, when present. Use them for the design asserts below. If the file is missing, skip this and note it in RESULT.
 4. **Dev server:** check for an already-running dev server on the expected port. Start one in the background if needed, and wait for the ready URL. If the port is in use, reuse the existing server.
 5. **Run the tests at the tier given**, using the assigned skills. If none are assigned, do a basic manual-style check: navigate to each `test_url`, screenshot it, check the console for errors, check the network tab for failed requests, and resize to each viewport looking for obvious layout breakage.
@@ -110,6 +124,7 @@ Every step you take re-reads everything you've read so far, so what you pull int
 8. **If `fix_mode: true`** — apply minimal fixes, re-run failed checks, set STATUS accordingly
 9. **Update `harness_doc`** if you learned something the next test would otherwise have to rediscover — a new fixture recipe, a quirk, a changed sign-in step. Keep it short; replace stale lines rather than appending.
 9b. **Log the result** — once STATUS is decided, if `run_log` is present, append one `wave_test` line per sprint in `wave_sprints` (see [Run log](#run-log))
+9c. **Clean up** — stop any dev server you started. On PASS or WARN, delete `screenshot_dir`; on FAIL, keep it and name the relevant files in `FAILURES` so the retry can see them
 10. End with `WAVE TEST RESULT:` block (required)
 
 ---
@@ -195,3 +210,7 @@ NOTES: [pre-existing warnings, env quirks]
 - Dump long tool logs in the final message — summarize in structured block only
 - Read the whole design system, or re-read a section you've already read
 - Trigger anything the harness doc says reaches production (real imports, scheduled jobs, emails)
+- Re-check in the browser what an `e2e_specs` spec already asserts
+- Search the disk outside app_root and workspace_root (`find /`, globbing the home folder) — for skills, screenshots or anything else
+- Save screenshots anywhere but `screenshot_dir`
+- Change git state (stash, checkout, reset, restore, clean, commit)

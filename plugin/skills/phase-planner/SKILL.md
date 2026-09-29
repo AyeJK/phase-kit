@@ -29,7 +29,8 @@ Each sprint has a task table. The **canonical format** includes a Status column:
 | — | 1 | Do the thing | src/core/ | Doc.txt |
 | ~ | 2 | Another thing | src/ui/ |
 | x | 3 | Done thing | src/core/ | Doc.txt |
-| — | 4 | Manual verification step with no code anchor |
+| — | 4 | Verification step with no code anchor |
+| MANUAL | 5 | Publish the package to the registry |
 ```
 
 **Module and Reference are optional cells.** The header row always lists all five columns (`Status | # | Task | Module | Reference`), but a task row **omits trailing placeholders** instead of writing `| — |` or `| — | — |`:
@@ -50,8 +51,11 @@ Do not end a row with `| — | — |`. If Reference alone were needed without Mo
 | `~` | In progress |
 | `x` | Completed |
 | `BLOCKED` | Blocked by dependency or issue |
+| `MANUAL` | Only the user can do it (publish, install on their machine, record, an outside call) |
 | `CUT` | Removed from scope (preserves history) |
 | `DEFERRED` | Pushed to a later sprint or phase |
+
+**`MANUAL` vs `BLOCKED`.** Both need the user. `BLOCKED` is agent work that got stuck (a missing credential, a decision) and goes back to an agent once unblocked. `MANUAL` is never agent work: phase-builder doesn't send it to an implementer or stop the run for it, and lists it at the phase checkpoint. The user marks it `x` when they've done it.
 
 ### Format Migration
 
@@ -77,7 +81,7 @@ Turn a plan (a chat, a spec, a product-planner doc) into a new phase file. This 
 1. Look for `docs/phases/` at the workspace root. If it doesn't exist, create it. No setup script is needed first
 2. Pick the phase number: one higher than the highest existing `Phase-{N}-*.md`, or `1` if there are none
 3. Write `docs/phases/Phase-{N}-{Name}.md` from the full template in [reference.md](reference.md): phase goal, then sprints, each with Goal, Tasks, Acceptance Criteria, Dependencies and **Verification**
-4. Every task starts at Status `—`. Use the sparse-row rules for Module and Reference
+4. Every task starts at Status `—`, except a task only the user can do, which starts at `MANUAL` (not `—` with "(manual)" in the text). Use the sparse-row rules for Module and Reference
 5. Show the user the sprint list and ask them to confirm before `run phase {N}`
 
 Never overwrite an existing phase file. If `Phase-{N}` already exists, use the next number or ask.
@@ -103,6 +107,7 @@ Change a task's status. This is the most common operation.
 - "mark 1.3 task 4 as done" -> Status = DONE
 - "start task 2 in sprint 1.1" -> Status = ACTIVE
 - "block 1.4 #6" -> Status = BLOCKED
+- "1.4 #7 is mine" / "I'll do that one" -> Status = MANUAL
 - "cut task 8 from 1.3" -> Status = CUT
 - "defer 1.5 task 3" -> Status = DEFERRED
 - "sprint 1.2 is done" -> All tasks in 1.2 = DONE
@@ -120,7 +125,7 @@ Add a new task to a sprint's table.
 2. Find the sprint section
 3. Migrate the table if needed
 4. Assign the next sequential task number
-5. Append the new row with Status `—`
+5. Append the new row with Status `—` (`MANUAL` if only the user can do it)
 6. Write the file
 
 **Format:** Use the sparse-row rules above: `| — | {next#} | {task}` when module and reference are both absent; otherwise include `| {module} |` and/or `| {reference} |` only for columns that have real values — never pad with trailing `| — |` only to fill the table.
@@ -261,6 +266,7 @@ Total: {n} tasks
   DONE:     {n}
   ACTIVE:   {n}
   BLOCKED:  {n}
+  MANUAL:   {n}
   DEFERRED: {n}
   CUT:      {n}
   Remaining:{n}
@@ -331,7 +337,7 @@ Update multiple tasks across sprints in a single operation.
 **Steps:**
 1. Read the phase file once
 2. For each sprint in the payload (ascending `X.Y`):
-   - Set `x` for `completed`, `BLOCKED` for `blocked`, `DEFERRED` / `CUT` as specified
+   - Set `x` for `completed`, `BLOCKED` for `blocked`, `MANUAL` for `manual`, `DEFERRED` / `CUT` as specified
    - Prefer **one edit per sprint** on the whole `### Tasks` table block
 3. Write the file with batched edits — **never one edit per task row**
 4. Return `DOC SYNC RESULT` per phase-doc-sync skill
@@ -375,6 +381,7 @@ The user may use informal language. Map these to operations:
 | "mark X done" / "complete X" / "finish X" | Set Status -> DONE |
 | "start X" / "working on X" / "begin X" | Set Status -> ACTIVE |
 | "block X" / "X is blocked" | Set Status -> BLOCKED |
+| "X is mine" / "I'll do X" / "X is manual" | Set Status -> MANUAL |
 | "cut X" / "X is out of scope" | Set Status -> CUT |
 | "defer X" / "push X" / "move X to later" | Set Status -> DEFERRED |
 | "reset X" / "unstart X" | Set Status -> — |
@@ -386,6 +393,7 @@ The user may use informal language. Map these to operations:
 | "how's phase X" / "phase X progress" | Phase Report |
 | "what's active" / "what am I working on" | List where Status = ACTIVE |
 | "what's blocked" | List where Status = BLOCKED |
+| "what's on me" / "what do I need to do" | List where Status = MANUAL |
 | "what's left in X" | List where Status = — in sprint X |
 | "new sprint in phase X" | Add Sprint |
 | "plan phase X" / "turn this into a phase" / "start a phase plan" | Create Phase |

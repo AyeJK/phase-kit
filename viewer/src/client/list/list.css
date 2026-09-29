@@ -1,0 +1,180 @@
+/*
+ * The list view (design-system.md "List view"): the 320px phase list and the
+ * rail side, each scrolling on its own, stacking below 900px. The rail is
+ * styled by `../rail/rail.css`; `.list-rail` turns its sticky heading bar
+ * into the plain heading line this view uses.
+ */
+
+.list-layout {
+  display: grid;
+  grid-template-columns: var(--list) minmax(0, 1fr);
+  height: calc(100vh - var(--head) - var(--filter));
+}
+
+/* ---------- Phase list ---------- */
+
+.phase-list {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.phase-list ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.phase-list .board-empty {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.phase-item {
+  display: block;
+  padding: 10px 12px;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+}
+.phase-item:hover {
+  background: var(--surface-2);
+}
+.phase-item.future {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+.phase-item.future:hover {
+  background: var(--surface-2);
+}
+.phase-item[aria-current='page'] {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.pi-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pi-head .num {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pi-count {
+  font: 500 12px var(--mono);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pi-title {
+  display: block;
+  margin-top: 4px;
+  font: 600 14px/1.35 var(--sans);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.phase-item.future .pi-title {
+  color: var(--text-2);
+}
+.phase-item > .seg-bar {
+  margin-top: 8px;
+}
+
+/* ---------- Rail side ---------- */
+
+.list-main {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 32px 48px;
+}
+.list-main > .empty {
+  margin-top: 0;
+}
+
+/* The heading line: "Phase 2", the title, the task count and the badge; it wraps. */
+.list-rail .rail-head {
+  position: static;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  height: auto;
+  min-height: 0;
+  margin-bottom: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.list-rail .rail-title {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.list-rail .rail-name {
+  font-size: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.list-rail .rail-body {
+  padding: 0;
+}
+/* No sticky bar to clear when `#s{id}` lands on a card. */
+.list-rail .rail-card {
+  scroll-margin-top: 16px;
+}
+
+/* ---------- Breakpoints ---------- */
+
+/* The phase list stacks above the rail as one sideways-scrolling row of compact items. */
+@media (max-width: 900px) {
+  .list-layout {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .phase-list {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase-list ol {
+    flex-direction: row;
+  }
+  .phase-list li {
+    flex-shrink: 0;
+  }
+  .phase-item {
+    white-space: nowrap;
+  }
+  .phase-item > .seg-bar {
+    display: none;
+  }
+  .pi-title {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+  }
+  /* A focused item's ring stays inside the scrolling row. */
+  .phase-item:focus-visible {
+    outline-offset: -2px;
+  }
+  .list-main {
+    overflow-y: visible;
+    padding: 20px 16px 40px;
+  }
+}
+
+@media (max-width: 640px) {
+  .list-main {
+    padding: 16px 16px 40px;
+  }
+}

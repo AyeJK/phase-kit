@@ -1,0 +1,12 @@
+# Viewer build output and test artifacts
+viewer/node_modules/
+viewer/dist/
+viewer/test-results/
+viewer/playwright-report/
+viewer/blob-report/
+viewer/playwright/.cache/
+viewer/*.tsbuildinfo
+viewer/*.tgz
+
+# phase-runner run logs (for anyone running phase-runner inside the repo)
+docs/phases/.runs/

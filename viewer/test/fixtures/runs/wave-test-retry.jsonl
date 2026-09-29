@@ -1,0 +1,7 @@
+{"v":1,"ts":"2026-09-28T12:00:00Z","phase":4,"wave":1,"sprint":"4.2","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3 — Settings screen."}
+{"v":1,"ts":"2026-09-28T12:01:20Z","phase":4,"wave":1,"sprint":"4.2","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 3/3 met"}
+{"v":1,"ts":"2026-09-28T12:04:50Z","phase":4,"wave":1,"sprint":"4.2","gate":"wave_test","result":"fail","attempt":1,"max":3,"summary":"/settings at 375px: save button overlaps the footer"}
+{"v":1,"ts":"2026-09-28T12:10:05Z","phase":4,"wave":1,"sprint":"4.2","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3 — Fixed the footer overlap."}
+{"v":1,"ts":"2026-09-28T12:11:15Z","phase":4,"wave":1,"sprint":"4.2","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 3/3 met"}
+{"v":1,"ts":"2026-09-28T12:14:40Z","phase":4,"wave":1,"sprint":"4.2","gate":"wave_test","result":"pass","attempt":2,"max":3,"summary":"2 URLs, 3 viewports"}
+{"v":1,"ts":"2026-09-28T12:16:00Z","phase":4,"wave":1,"sprint":"4.2","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"3 tasks updated","files":["src/settings/SettingsScreen.tsx","src/settings/settings.css"]}

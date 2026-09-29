@@ -1,0 +1,276 @@
+/*
+ * Sprint pieces the rail draws (design-system.md "Badges and tags", "Tasks
+ * table", "Acceptance criteria list"): status badges and tags, the tasks
+ * table, the criteria list, and markdown lists and blocks from the phase
+ * file. Values follow `prototypes/_quiet.css`.
+ *
+ * Every grid and flex child that holds text gets `min-width: 0` or
+ * `overflow-wrap: anywhere`, so long paths and code wrap instead of widening
+ * the page at 375 px.
+ */
+
+/* ---------- Status badge and tag ---------- */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+}
+.status .i {
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+}
+.status.pass {
+  color: var(--passed);
+  background: var(--passed-bg);
+  border-color: color-mix(in srgb, var(--passed) 45%, transparent);
+}
+.status.run {
+  color: var(--running);
+  background: var(--running-bg);
+  border-color: var(--running);
+}
+.status.fail {
+  color: var(--failed);
+  background: var(--failed-bg);
+  border-color: var(--failed);
+}
+.status.needs {
+  color: var(--needs);
+  background: var(--needs-bg);
+  border-color: var(--needs);
+}
+/* "Needs you" from a MANUAL task alone: violet, not blocked pink. */
+.status.manual {
+  color: var(--manual);
+  background: var(--manual-bg);
+  border-color: var(--manual);
+}
+
+.tag {
+  display: inline-block;
+  padding: 3px 6px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+
+/* ---------- Empty bodies ---------- */
+
+.none {
+  color: var(--text-3);
+}
+
+/* ---------- Tasks table ---------- */
+
+.tasks {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tasks td {
+  padding: 9px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tasks tr:first-child td {
+  border-top: 0;
+}
+.tasks td.st {
+  /* Shrinks to the widest status word in the table. */
+  width: 1%;
+  padding-left: 0;
+  padding-right: 12px;
+  font: 500 11px/20px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-3);
+}
+.tasks td.st.pass {
+  color: var(--passed);
+}
+.tasks td.st.run {
+  color: var(--running);
+}
+.tasks td.st.needs {
+  color: var(--needs);
+}
+.tasks td.st.manual {
+  color: var(--manual);
+}
+/* Uppercase mono reads high next to the sans task text: drop both 1px. */
+.tasks .st-in {
+  position: relative;
+  top: 1px;
+}
+.tasks td.n {
+  padding-top: 10px;
+  padding-bottom: 8px;
+}
+.tasks .st-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+.tasks .st .i {
+  width: 14px;
+  height: 14px;
+}
+.tasks .n {
+  width: 28px;
+  font: 500 12px/20px var(--mono);
+  color: var(--text-3);
+}
+.tasks .t {
+  overflow-wrap: anywhere;
+}
+.tasks .note {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--needs);
+}
+.tasks code {
+  font: 12px var(--mono);
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.tasks tr.cut td {
+  color: var(--text-3);
+}
+.tasks tr.cut .text {
+  text-decoration: line-through;
+}
+/* Not started in a sprint that has begun: an amber band, with a 2px amber
+   edge, drawn 10px past the table's ends by shadows so no column moves. The
+   tint is opaque (mixed onto the panel's --surface) so the edge shadow
+   underneath doesn't show through it. */
+.tasks tr.remaining {
+  --remaining-bg: color-mix(in srgb, var(--accent) 11%, var(--surface));
+}
+.tasks tr.remaining td {
+  background: var(--remaining-bg);
+}
+.tasks tr.remaining td.st {
+  color: var(--accent-text);
+  box-shadow:
+    -8px 0 0 var(--remaining-bg),
+    -10px 0 0 var(--accent);
+}
+.tasks tr.remaining td:last-child {
+  box-shadow: 8px 0 0 var(--remaining-bg);
+}
+.tasks tr.remaining .st .i {
+  color: var(--accent);
+}
+
+/* ---------- Acceptance criteria ---------- */
+
+.criteria {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.criteria li {
+  display: flex;
+  gap: 10px;
+}
+.criteria li::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-top: 8px;
+  background: var(--accent);
+}
+.criteria li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Markdown from the phase file (`markdown.tsx`) ---------- */
+
+.md {
+  display: grid;
+  gap: 10px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.md strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.md .md-h {
+  margin-top: 4px;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.md-pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+}
+.md-pre code {
+  padding: 0;
+  background: none;
+}
+.plain {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plain li {
+  position: relative;
+  padding-left: 14px;
+  overflow-wrap: anywhere;
+}
+.plain li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 5px;
+  height: 5px;
+  background: var(--text-3);
+}
+.plain li.nested {
+  margin-left: 14px;
+}
+.plain.ordered {
+  counter-reset: md-ol;
+}
+.plain.ordered li {
+  counter-increment: md-ol;
+  padding-left: 22px;
+}
+.plain.ordered li::before {
+  content: counter(md-ol) '.';
+  top: 0;
+  width: auto;
+  height: auto;
+  font: 500 12px/21px var(--mono);
+  color: var(--text-3);
+  background: none;
+}

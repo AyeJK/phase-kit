@@ -41,6 +41,30 @@ A failed wave retries the same sprint with the failure attached, up to three tim
 3. **Break it into phases.** Ask `phase-planner` to turn the product plan into phase plans, split into sprints and tasks, each with acceptance criteria.
 4. **Build it.** With the docs in place, say something like *"implement phase 1"*. `phase-builder` gets to work, and checks in with you when it hits a blocker or finishes the phase.
 
+## Watch a build live
+
+[`phase-viewer`](viewer/) is a local dashboard for a phase run. It shows your phases, sprints and tasks, and every gate result as it lands: which wave is building, which verify failed and why, and the retry that fixed it. It updates as the files change, and it only reads your project, never writes to it.
+
+<!-- Recording of a live run with a verify fail and the retry landing goes here (release asset, Sprint 6.3 task 5). -->
+
+In Claude Code, say *"open the viewer"*. The `phase-viewer` skill starts it in the background and gives you the URL. Ask again later and you get the same URL, since only one viewer runs per project.
+
+Or, from your project folder (the one that holds `docs/phases/`), in your own terminal:
+
+```
+npx phase-viewer
+```
+
+Open the URL it prints. Ctrl+C stops it. Needs Node.js 20 or later.
+
+**Local sessions only.** The viewer serves on `localhost` of the machine that runs it. In a cloud or remote Claude Code session, the skill starts nothing and tells you to run `npx phase-viewer` on your own machine, against your local checkout.
+
+**Keep run logs out of git.** `phase-builder`'s agents append one JSON line per gate result, plus one as each sprint's implementation starts, to `docs/phases/.runs/`. The viewer reads these logs, but they only make sense on the machine that ran the build, so add this to your `.gitignore`:
+
+```gitignore
+docs/phases/.runs/
+```
+
 ## How it compares
 
 | | Phase Runner | [Superpowers](https://github.com/obra/superpowers) | [Spec Kit](https://github.com/github/spec-kit) | [GSD](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) |
@@ -62,7 +86,7 @@ Most of these pieces exist somewhere. Phase Runner is the one where all of them 
 
 ### Skills you use
 
-These are the four you talk to. Everything else runs on its own.
+These are the five you talk to. Everything else runs on its own.
 
 | Skill | Job |
 |---|---|
@@ -70,6 +94,7 @@ These are the four you talk to. Everything else runs on its own.
 | `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. Optional, for UI-heavy projects. |
 | `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. |
 | `phase-builder` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
+| `phase-viewer` | Starts the live dashboard (`npx phase-viewer`) in the background and gives you its URL. Local sessions only. |
 
 ### Skills phase-builder runs for you
 
@@ -111,7 +136,7 @@ your-project/
     └── src/
 ```
 
-Two roots matter and phase-builder resolves both automatically at the start of every run (see `skills/phase-builder/project-layout.md`):
+Two roots matter and phase-builder resolves both automatically at the start of every run (see `plugin/skills/phase-builder/project-layout.md`):
 
 - **workspace_root** — where `docs/` lives
 - **app_root** — where your code and its manifest file live
@@ -122,7 +147,7 @@ You don't need to create these folders. `phase-planner` and `design-planner` mak
 
 ## Platform support
 
-This kit was originally built against Cursor's skill/sub-agent conventions and has been generalized to run on any Claude Code–compatible agent runtime (Cursor, Claude Code, or hosts built on the Claude Agent SDK). The only environment-specific pieces — which tool spawns a sub-agent, what type name to give it, and how skill files get loaded — are resolved once per run by `skills/phase-builder/runtime-adapter.md`, which discovers what's actually available in your session rather than assuming a specific tool. See that file if you're adding support for a new environment.
+This kit was originally built against Cursor's skill/sub-agent conventions and has been generalized to run on any Claude Code–compatible agent runtime (Cursor, Claude Code, or hosts built on the Claude Agent SDK). The only environment-specific pieces — which tool spawns a sub-agent, what type name to give it, and how skill files get loaded — are resolved once per run by `plugin/skills/phase-builder/runtime-adapter.md`, which discovers what's actually available in your session rather than assuming a specific tool. See that file if you're adding support for a new environment.
 
 ## Optional dependencies
 
@@ -136,8 +161,11 @@ This kit was originally built against Cursor's skill/sub-agent conventions and h
 | `~` | In progress |
 | `x` | Completed |
 | `BLOCKED` | Blocked by dependency or issue |
+| `MANUAL` | Yours to do: publish, install on your machine, record, anything outside the codebase |
 | `CUT` | Removed from scope (row preserved for history) |
 | `DEFERRED` | Pushed to a later sprint or phase |
+
+`BLOCKED` and `MANUAL` both need you, in different ways. A `BLOCKED` task is agent work that got stuck: `phase-builder` stops and asks, and an agent finishes it once you unblock it. A `MANUAL` task never goes to an agent and never stops the run. `phase-builder` lists it at the phase checkpoint, and you mark it `x` when you've done it.
 
 Only `phase-doc-sync` writes these during an automated run. You can obviously edit the file by hand any time outside a run, or just ask `phase-planner` to make the change conversationally.
 

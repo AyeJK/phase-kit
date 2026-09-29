@@ -1,0 +1,65 @@
+{
+  "name": "phase-viewer",
+  "version": "0.1.0",
+  "description": "Local live dashboard for phase-runner builds: phases, sprints, tasks and run-log events.",
+  "keywords": [
+    "phase-runner",
+    "claude-code",
+    "dashboard",
+    "cli"
+  ],
+  "homepage": "https://github.com/AyeJK/phase-runner/tree/main/viewer#readme",
+  "bugs": {
+    "url": "https://github.com/AyeJK/phase-runner/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AyeJK/phase-runner.git",
+    "directory": "viewer"
+  },
+  "license": "MIT",
+  "author": "Jeremy Kaye",
+  "type": "module",
+  "bin": {
+    "phase-viewer": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && vite build && tsc -p tsconfig.build.json",
+    "start": "node dist/cli.js",
+    "serve": "tsx src/cli.ts",
+    "simulate": "tsx scripts/simulate-run.ts",
+    "check": "tsc --noEmit && tsc --noEmit -p src/client && vitest run",
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "pack:smoke": "tsx scripts/pack-smoke.ts",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3"
+  }
+}

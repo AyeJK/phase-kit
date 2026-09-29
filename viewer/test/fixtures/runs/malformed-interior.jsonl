@@ -1,0 +1,5 @@
+{"v":1,"ts":"2026-09-28T15:00:00Z","phase":2,"wave":1,"sprint":"2.1","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2"}
+{"v":1,"ts":"2026-09-28T15:01:10Z","phase":2,"wave":1,"sprint":"2.1","gate":"verify","result":"fail","attempt":1,"max":3,"summary":"lint: 1 error in src/core/model.ts"}
+{"v":1,"ts":"2026-09-28T15:06:30Z","phase":2,"wave":1,"sprint":"2.1","gate":"implem
+{"v":1,"ts":"2026-09-28T15:07:45Z","phase":2,"wave":1,"sprint":"2.1","gate":"verify","result":"pass","attempt":2,"max":3,"summary":"criteria 3/3 met"}
+{"v":1,"ts":"2026-09-28T15:09:00Z","phase":2,"wave":1,"sprint":"2.1","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"2 tasks updated","files":["src/core/model.ts"]}

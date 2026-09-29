@@ -7,7 +7,7 @@ description: "Orchestrates automated sprint implementation from phase plans — 
 
 Orchestrates sprint implementation from phase plan files at `docs/phases/Phase-{N}-*.md`. Reads the plan, identifies incomplete sprints, **groups sprints into parallel waves when safe**, spawns one sub-agent per sprint (multiple sub-agent calls in the same turn when running a wave), processes results, and manages human checkpoints at blockers and phase boundaries. **Default remains sequential** when the dependency graph, overlap risk, or sprint semantics do not justify parallelism.
 
-**Companion files:** `runtime-adapter.md` (which sub-agent tool and skill-loading mechanism this environment uses), `project-layout.md` (workspace_root vs app_root), `skill-router.md`, `run-log.md` (the per-phase log the gate agents append to), and the `phase-ui-implement`, `phase-verify`, `phase-wave-test`, `phase-doc-sync` skills.
+**Companion files:** `runtime-adapter.md` (which sub-agent tool and skill-loading mechanism this environment uses), `project-layout.md` (workspace_root vs app_root), `skill-router.md`, `run-log.md` (the per-phase log the gate agents and implementers append to), and the `phase-ui-implement`, `phase-verify`, `phase-wave-test`, `phase-doc-sync` skills.
 
 ---
 
@@ -156,7 +156,7 @@ Every step an agent takes re-reads everything it has seen so far. An agent kept 
 
 | Continue an existing agent (`SendMessage` or equivalent)? | |
 |---|---|
-| Same sprint's implementation, retry within the **same wave** | ✓ Preferred when the agent is still addressable: it already has the code in context and the fix is usually small. Otherwise re-spawn with the full 3a prompt |
+| Same sprint's implementation, retry within the **same wave** | ✓ Preferred when the agent is still addressable: it already has the code in context and the fix is usually small. Otherwise re-spawn with the full 3a prompt. Either way the retry carries its new run-log `attempt` |
 | Verify re-run within the **same wave**, after a retry | ✓ |
 | Wave-test retry | ✗ Spawn fresh at `tier: regression` with `retest_only` — cheaper than continuing a tester whose context is full of the first attempt's browser logs |
 | Any gate agent (verify, wave-test, doc-sync) into a **new wave** | ✗ Never. Spawn fresh |
@@ -206,37 +206,41 @@ Log each retry: `↻ Verify — 5.3 (retry 2/3)` or `↻ Wave test — 5.3 (retr
 
 ## Wave sequencing (mandatory)
 
-**One wave must fully finish before the next wave starts.** Gates inside a wave are **strictly sequential** except: multiple **implementation** sub-agent calls in the same turn when a wave has 2+ sprints (3b only).
+**A wave's gates must all pass before the next wave starts.** Gates inside a wave are **strictly sequential**. Two exceptions: multiple **implementation** sub-agent calls in the same turn when a wave has 2+ sprints (3b), and a wave's **doc-sync running alongside the next wave's implementation** (3c-sync). Implementers never touch the phase file, and the next wave's diff starts from the last verify's snapshot, not from doc-sync, so the two can't collide.
 
 ### Allowed parallelism
 
 | Same turn | Allowed? |
 |-----------|----------|
 | Multiple **3b** implementation calls (multi-sprint wave only) | ✓ |
+| Doc-sync (wave N) + implementation (wave N+1) | ✓ — after every wave N gate passed and 3d found no blockers |
 | Verify + wave-test | ✗ |
 | Wave-test + doc-sync | ✗ |
 | Verify + doc-sync | ✗ |
-| Doc-sync + next wave implementation | ✗ |
 | Verify + next wave anything | ✗ |
 | Wave-test + next wave anything | ✗ |
-| Doc-sync + anything else | ✗ — wait for `DOC SYNC RESULT` first |
+| Doc-sync (wave N) + verify (wave N+1) | ✗ — wave N+1's verify waits for `DOC SYNC RESULT` |
 
 ### Order within one wave
 
-**Data-only:** 3b → 3b-verify → (retry loop) → 3c → 3c-sync → 3d → 3e
+**Data-only:** 3b → 3b-verify → (retry loop) → 3c → 3d → 3c-sync ∥ next wave's 3b
 
-**UI:** 3b → 3b-verify → (retry loop) → 3c → 3f → (retry loop) → 3c-sync → 3d → 3e
+**UI:** 3b → 3b-verify → (retry loop) → 3c → 3f → (retry loop) → 3d → 3c-sync ∥ next wave's 3b
 
-Each arrow = wait for the prior step's result block before spawning the next sub-agent.
+Each arrow = wait for the prior step's result block before spawning the next sub-agent. `∥` = same turn.
 
 ### Advance rule
 
-**3e — Advance to next wave** only after:
+**3e — Start the next wave's implementation** only after:
 
 1. All gates passed (or user skipped via escalation), **and**
-2. **3c-sync** returned `DOC SYNC RESULT: SUCCESS`
+2. **3d** found no blockers (blockers come from `SPRINT RESULT`, so you know before doc-sync)
 
-Never pipeline Sprint N+1 while Wave N doc-sync is in flight or incomplete.
+Spawn it in the same turn as **3c-sync**. Then:
+
+- **Wait for `DOC SYNC RESULT` before the next wave's verify.** That keeps the run log in order (wave N's `doc_sync` lines before wave N+1's `implement` `pass` / `blocked` lines; only its `start` lines may come earlier) and makes sure a failed sync stops the run before more work is verified.
+- **Doc-sync PARTIAL / FAILED:** let the in-flight implementation calls finish, don't spawn their verify, and show FAILURES (see 3c-sync). The fix is to the phase file only, so the next wave's `diff_base` stays valid.
+- **Last wave of the phase:** doc-sync runs alone; wait for it before the Step 4 checkpoint.
 
 ---
 
@@ -251,12 +255,11 @@ On verify or wave-test **FAIL**, the **only** code-change path is re-spawn the *
 | A task description like `Fix 6.4`, `Fix TS error`, `Fix tracker` | Bypasses sprint scope and SPRINT RESULT contract |
 | A dedicated "fixer" sub-agent for code fixes | doc-sync's dedicated agent (if one exists) is **doc-sync only** during phase runs |
 | Spawning a new sprint while retrying the current wave | Violates wave sequencing |
-| Implementation running CLI checks on retry | phase-verify owns CLI checks |
 
 ### Required retry shape
 
 - **Description:** `Sprint {X.Y} — {title} (retry {n})` — same sprint id every time
-- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`. When continuing the same agent within the wave (see Sub-agent lifecycle), send only the failures block and the retry number
+- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`, with the `RUN LOG` block's `attempt` set for this run (see Run log). When continuing the same agent within the wave (see Sub-agent lifecycle), send only the failures block, the retry number and, when the run is logged, this line: `RUN LOG: attempt is now {attempt}. Append a new implement start line with it before anything else.`
 - **Type:** the general-purpose type resolved in runtime-adapter.md
 
 After implementation returns → **3b-verify** again → (UI) **3f** again. Never skip verify to save time.
@@ -272,18 +275,20 @@ Read the target phase file. Sprints are identified by this header pattern:
 
 Each sprint section contains:
 - **Goal** line
-- **Tasks** table (with Status column: `—` not started, `~` in progress, `x` done, `BLOCKED`, `CUT`, `DEFERRED`)
+- **Tasks** table (with Status column: `—` not started, `~` in progress, `x` done, `BLOCKED`, `MANUAL` (the user's to do), `CUT`, `DEFERRED`)
 - **Acceptance Criteria** section
 - **Dependencies** section
 
 **A sprint is complete** when all tasks with status `—`, `~`, or `BLOCKED` are gone — i.e. every task is `x`, `CUT`, or `DEFERRED`. Skip complete sprints silently.
+
+**A sprint whose only open tasks are `MANUAL`** needs no agent work. Skip it like a complete sprint, but note its `MANUAL` tasks for the Step 4 checkpoint. A `MANUAL` task never goes to an implementer.
 
 Build an ordered list of sprints to run. Report it to the user before starting:
 
 ```
 Phase {N} — {Title}
 Sprints to run: {X.1}, {X.2}, {X.3}
-(Skipping: {X.0} — already complete)
+(Skipping: {X.0} — already complete; {X.4} — only manual tasks left)
 
 Starting with Sprint {X.1}...
 ```
@@ -339,16 +344,17 @@ Append **skill plan** from Step 1.5 (implementation skills per sprint, wave-test
 
 Verify reviews only what the current wave changed, measured from a git snapshot called `diff_base`. Track it for the whole run:
 
-- **After a doc-sync SUCCESS**, set `diff_base` = the `SNAPSHOT` from `DOC SYNC RESULT` (`null` if `NONE`).
-- **Before any wave's implementation calls**, re-baseline if `diff_base` didn't come from a SUCCESS doc-sync that ended the previous wave — the first wave of a run, a resumed run, a doc-sync PARTIAL/FAILED followed by a manual fix, a gate skipped via escalation, or after any blocker pause or escalation (the user may have edited files — you can't tell, so always re-baseline). Spawn one call: description `Verify baseline`, prompt loads the `phase-verify` skill with `{ "mode": "baseline", "project_root": app_root }` (no `run_log`), model `gate_model` if resolved. Set `diff_base` = its `SNAPSHOT` (`null` if `NONE`).
+- **When a wave's gates have all passed**, record `wave_end` = the `SNAPSHOT` from that wave's **last passing** `VERIFY RESULT` (`null` if `NONE`). Verify takes it before building, so it is exactly the code that passed. On a UI wave that's the verify after the last wave-test retry, not the first one. The next wave's `diff_base` = `wave_end`; doc-sync gets both shas (see Run log).
+- **Before any wave's implementation calls**, re-baseline if `diff_base` didn't come from the `wave_end` of the wave just before it — the first wave of a run, a resumed run, a gate skipped via escalation, or after any blocker pause or escalation (the user may have edited files — you can't tell, so always re-baseline). Spawn one call: description `Verify baseline`, prompt loads the `phase-verify` skill with `{ "mode": "baseline", "project_root": app_root }` (no `run_log`), model `gate_model` if resolved. Set `diff_base` = its `SNAPSHOT` (`null` if `NONE`).
+- **Doc-sync edits in the next wave's diff:** in a single-folder layout the phase file is inside the repo, so wave N's Status-cell edits show up in wave N+1's diff. phase-verify knows to ignore Status-only changes to `docs/phases/*.md`; nothing to do here.
 - **Resumed run** (the user says resume/continue, or this phase already has completed sprints when the run starts): skip the baseline for the first wave and set `diff_base` = `null`. An interrupted wave may have left half-written changes, and a baseline would absorb them unreviewed; `null` reviews against `HEAD` at low confidence, where out-of-scope findings are non-blocking.
 - Retries within a wave keep the same `diff_base`.
 
 The orchestrator only passes the sha along — it never runs git itself.
 
-### Run log (every gate call)
+### Run log (every gate and implementation call)
 
-Each verify, wave-test and doc-sync call carries a `run_log` block, and that gate appends its own events to `{workspace_root}/docs/phases/.runs/phase-{N}.jsonl`. The orchestrator only builds the block from values it already tracks; it writes nothing. Field meanings, event shape and the append line are in **`run-log.md`**.
+Each verify, wave-test and doc-sync call carries a `run_log` block, and that gate appends its own events to `{workspace_root}/docs/phases/.runs/phase-{N}.jsonl`. Each implementation call carries a smaller one in its prompt's `RUN LOG` section (see 3a), and the implementer appends one `implement` `start` line as its first action. The orchestrator only builds the blocks from values it already tracks; it writes nothing. Field meanings, event shape and the append line are in **`run-log.md`**.
 
 | Field | Value |
 |-------|-------|
@@ -357,7 +363,16 @@ Each verify, wave-test and doc-sync call carries a `run_log` block, and that gat
 | `attempt` | Verify: `verify_retry_count + 1`. Wave-test: `wave_test_retry_count + 1`. Doc-sync: 1 (n on a user-requested re-run) |
 | `max` | Verify: `max_verify_retries`. Wave-test: `max_wave_test_retries`. Doc-sync: 1. `0` when the user set no limit |
 | `sprint_results` | Verify only: for each sprint implemented since the previous verify in this wave, `sprint`, `completed`, `blocked` and the first line of `notes`, from its `SPRINT RESULT` |
-| `diff_base` | Doc-sync only: the wave's `diff_base`, before you replace it with the new SNAPSHOT |
+| `diff_base`, `wave_end` | Doc-sync only: the wave's `diff_base` and its `wave_end` (see Diff baseline). Doc-sync lists the files changed between them |
+
+The implementer's block has `path`, `phase`, `wave`, `sprint` (its own sprint id), `attempt` and `max`:
+
+| Field | Value |
+|-------|-------|
+| `attempt` | `verify_retry_count + 1` at the moment you spawn or continue it: 1 on the wave's first implementation, the new count + 1 on a retry after a verify FAIL. A retry after a wave-test FAIL doesn't bump the verify counter, so it repeats the current number, the same one its verify will log |
+| `max` | `max_verify_retries`, `0` when the user set no limit |
+
+Every implementation run gets one, including a retry continued in the same agent: that retry message carries the new `attempt` (see Retry implementation only), so the agent appends a fresh `start` line.
 
 ### Per wave (one or many sprints)
 
@@ -367,11 +382,11 @@ For each **wave** from Step 2.5:
 
 **Data-only wave** (`wave_has_ui: false`):
 
-Follow **3a → 3b → 3b-verify → 3b-verify-retry → 3c → 3c-sync → 3d → 3e**.
+Follow **3a → 3b → 3b-verify → 3b-verify-retry → 3c → 3d → 3c-sync ∥ 3e**.
 
 **UI wave** (`wave_has_ui: true`):
 
-Follow **3a → 3b → 3b-verify → 3b-verify-retry → 3c → 3f → 3f-retry → 3c-sync → 3d → 3e**.
+Follow **3a → 3b → 3b-verify → 3b-verify-retry → 3c → 3f → 3f-retry → 3d → 3c-sync ∥ 3e**.
 
 Doc-sync runs **after wave-test passes** on UI waves so the phase file reflects fully verified work.
 
@@ -384,9 +399,8 @@ Doc-sync runs **after wave-test passes** on UI waves so the phase file reflects 
 5. **3c — Parse results** — build doc-sync payload; hold until UI gates complete.
 6. **3f — Wave test** (if `wave_has_ui`) — spawn **one** call; **wait** for `WAVE TEST RESULT:` before doc-sync.
 7. **3f-retry** — on FAIL, same-sprint re-implement → 3b-verify-retry → 3f again. **Do not** doc-sync until wave-test PASS/WARN.
-8. **3c-sync** — spawn **one** doc-sync call; **wait** for `DOC SYNC RESULT: SUCCESS` before 3e or next wave.
-9. **3d — Blockers**
-10. **3e — Advance** — next wave starts **only** after step 8 succeeds.
+8. **3d — Blockers** — from the `SPRINT RESULT` blocks; stop here if any
+9. **3c-sync ∥ 3e** — in one turn, spawn **one** doc-sync call and the next wave's implementation call(s). Wait for `DOC SYNC RESULT: SUCCESS` before the next wave's verify (see Advance rule).
 
 ### 3a. Build the sub-agent prompt
 
@@ -422,7 +436,7 @@ DESIGN SYSTEM (for UI tasks in this sprint only):
 {absolute path or skill name for docs/design/design-system.md, if it exists} — read before editing UI/component files
 ```
 
-Then construct the prompt using this template:
+Then construct the prompt using this template. The `RUN LOG` section is the one exception to filling in every `{…}`: fill in its `run_log:` line (see Run log), then paste the rest of the section exactly as written, the append command's placeholders included. The implementer fills those from `run_log`. Leave the whole section out when the run isn't logged; the implementer then writes nothing.
 
 ```
 You are a {UI implementation | software development} agent. Your job is to implement a specific sprint from a project phase plan.
@@ -431,6 +445,13 @@ WORKSPACE_ROOT: {absolute path — docs/phases, doc-sync target}
 APP_ROOT: {absolute path — run checks/dev from here; edit src/ here}
 
 Everything you need from the phase plan is below. Don't open the phase file.
+
+{Only when the run is logged:}
+RUN LOG — your first action, before reading or editing anything:
+run_log: {"path": "{log path, forward slashes}", "phase": {N}, "wave": {W}, "sprint": "{X.Y}", "attempt": {attempt}, "max": {max}}
+Append one line to the run log from a POSIX shell (bash; Git Bash on Windows, never PowerShell). Use this exact command, replacing only the {…} placeholders and keeping every other character: {path} (twice), {phase}, {wave}, {sprint}, {attempt} and {max} come from run_log; {gate} is implement; {result} is start; {summary} is empty, so '{summary}' becomes ''.
+mkdir -p "$(dirname '{path}')" && printf '{"v":1,"ts":"%s","phase":%d,"wave":%d,"sprint":"%s","gate":"%s","result":"%s","attempt":%d,"max":%d,"summary":"%s"%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{phase}' '{wave}' '{sprint}' '{gate}' '{result}' '{attempt}' '{max}' "$(printf '%s' '{summary}' | tr '\042\134\011\012\015' "'/   " | tr -d '\000-\037')" "${RL_FILES:-}" >> '{path}'
+One line per implementation run. If you're later continued with a retry that gives a new attempt, append a new start line with it first. If the command exits non-zero, fix an obvious slip and run it once more at most, then put one line in NOTES (run log: append failed — {reason}) and carry on. It never blocks a task. Never write the log with a file-edit tool.
 
 PROJECT CONVENTIONS:
 {Point at whatever convention docs this project uses — list paths, don't paraphrase; sub-agent reads them itself}
@@ -460,8 +481,9 @@ TOOL USAGE POLICY:
 - Only mark a task BLOCKED if neither the MCP tool nor any CLI/code alternative can accomplish it.
   In that case, use reason "No tool available: {what's needed}" so the orchestrator can prompt
   the user to install something.
-- Do NOT run CLI checks (build, typecheck, tests) here — **phase-verify sub-agent** runs those after you return.
-- Do NOT run browser automation / responsive / visual QA here — wave-test sub-agent handles that before doc-sync on UI waves.
+- Run a quick self-check before returning (see SELF-CHECK below). Don't run the full test suite or the build — **phase-verify sub-agent** runs those after you return and decides pass or fail.
+- Do NOT run browser automation / responsive / visual QA here (MCP browser tools, manual click-throughs) — wave-test sub-agent handles that before doc-sync on UI waves. Running an e2e spec file you wrote is a test, not browser QA, and is fine.
+- Don't run git commands that change the working tree, index, stash, refs or history (stash, checkout, switch, reset, restore, clean, commit, merge, rebase). Read-only git (status, diff, log, show) is fine.
 
 PHASE CONTEXT (scoped — not the full phase file, see "Phase context" note above):
 {phase-level preamble: title, goal, decision log, sequencing notes — everything before the first "# Sprint" header}
@@ -476,7 +498,7 @@ YOUR TASK: Implement Sprint {X.Y} — {Sprint Title}
 Goal: {sprint goal line}
 
 Tasks to implement (implement ALL of these unless a task is genuinely impossible):
-{task table rows — include only tasks with status —, ~, or BLOCKED}
+{task table rows — include only tasks with status —, ~, or BLOCKED. Never MANUAL}
 
 Acceptance Criteria:
 {acceptance criteria section}
@@ -500,8 +522,15 @@ Work through the tasks systematically. For each task:
   BLOCKED and explain clearly — do not guess or make assumptions
 - If a required integration is missing, mark the task BLOCKED with "Tool not connected: {name}"
   rather than improvising a workaround
+- If a task is one only the user can do (publish a package, install something on their machine,
+  record a video, a call or action outside the codebase), don't mark it BLOCKED. List it under
+  MANUAL and say in NOTES exactly what the user must do. Do any agent-doable part of it first
 
-Do NOT run build/typecheck/test commands — a separate verify sub-agent runs CLI checks after you return.
+SELF-CHECK (once, when every task is written — not after each file):
+1. Run the project's typecheck or lint-level check (for `package.json` projects, `npm run check` if it exists, else `npx tsc --noEmit`; use the equivalent for other stacks). It takes seconds and catches most verify failures.
+2. Run only the test files this sprint added or changed, by path (e.g. `npx vitest run test/foo.test.ts`, `npx playwright test tests/e2e/foo.spec.ts`). Not the whole suite.
+3. Fix what fails and re-run just the failing part. At most two fix rounds; if something still fails, stop and say so in CHECKS — verify will report it.
+4. In a parallel wave another sprint is editing at the same time. A failure only in files you didn't touch is theirs: leave it alone and note it in CHECKS.
 
 Do NOT edit `docs/phases/*.md` or any phase plan files — status updates are handled by doc-sync after all verification passes (CLI verify; plus wave-test on UI waves).
 
@@ -511,7 +540,9 @@ SPRINT RESULT:
 COMPLETED: [comma-separated task numbers, or NONE]
 BLOCKED: [comma-separated task numbers, or NONE]
 BLOCKED_REASONS: [for each blocked task on a new line: "Task N: <reason>"]
-NOTES: [anything important — decisions made, warnings, things the next sprint should know]
+MANUAL: [comma-separated task numbers only the user can do, or NONE]
+CHECKS: [self-check result, e.g. "check pass; 3 test files, 24/24 pass" — or what still fails]
+NOTES: [anything important — decisions made, warnings, things the next sprint should know, what the user must do for each MANUAL task]
 ```
 
 ### 3b. Spawn the implementation sub-agent(s)
@@ -539,15 +570,15 @@ Spawn **exactly one** verify call:
 
 - **description:** `Verify — {sprint ids}` e.g. `Verify — 5.2, 5.3`
 - **prompt:** load the `phase-verify` skill per runtime-adapter.md; JSON payload with `project_root` = **app_root**, `workspace_root`, `wave_sprints`, `skills_to_follow` (project convention docs relevant to build/test, from project-layout.md), `default_command`, `acceptance_checks`, `diff_base`, `run_log` (see Run log), and in worktree mode `leak_check`
-- **`wave_sprints`:** per sprint, `id`, `title`, `verification_cli`, `acceptance` (every criterion, verbatim), and `tasks` (`n`, task text, Module cell or `null`) — all read from the phase file you already parsed in Step 2. Verify's review contract gives each criterion a verdict and checks scope against the Module cells
+- **`wave_sprints`:** per sprint, `id`, `title`, `verification_cli`, `acceptance` (every criterion, verbatim), and `tasks` (`n`, task text, Module cell or `null`, plus `"manual": true` on a task that is `MANUAL` in the phase file or in its `SPRINT RESULT`) — all read from the phase file you already parsed in Step 2. Verify's review contract gives each criterion a verdict and checks scope against the Module cells
 - **model:** `gate_model` if resolved; a **fresh** agent each wave (see Sub-agent lifecycle)
 
 Wait for `VERIFY RESULT:` **before spawning 3f or 3c-sync or any call for the next wave**.
 
 | VERIFY STATUS | Orchestrator action |
 |---------------|---------------------|
-| PASS | `✓ Verify — {ids} ({summary}; criteria {met}/{total} met)` → 3c (UI waves: then 3f before doc-sync) |
-| PARTIAL | Log NOTES → 3c (unless strict mode → 3b-verify-retry). Record every `UNVERIFIED` criterion and non-blocking scope note for the Step 4 checkpoint; drop the `UNVERIFIED (wave-test)` ones once that wave's wave-test passes. In strict mode, retry only for findings in files a sprint in this wave owns — `UNVERIFIED` criteria and files no implementer wrote can't change on a retry, so carry them to the checkpoint instead |
+| PASS | `✓ Verify — {ids} ({summary}; criteria {met}/{total} met)` → 3c (UI waves: then 3f before doc-sync). Keep its `SNAPSHOT` (candidate `wave_end`) and `E2E_SPECS` (for 3f) |
+| PARTIAL | Log NOTES → 3c (unless strict mode → 3b-verify-retry). Keep `SNAPSHOT` and `E2E_SPECS` as for PASS. Record every `UNVERIFIED` criterion and non-blocking scope note for the Step 4 checkpoint; drop the `UNVERIFIED (wave-test)` ones once that wave's wave-test passes. In strict mode, retry only for findings in files a sprint in this wave owns — `UNVERIFIED` criteria and files no implementer wrote can't change on a retry, so carry them to the checkpoint instead |
 | FAIL | **3b-verify-retry** — do not doc-sync or wave-test |
 
 **Missing `SPRINT RESULT`:** Re-spawn implementation first; do not verify until a result block exists.
@@ -559,7 +590,7 @@ On `VERIFY RESULT: STATUS: FAIL`:
 1. Increment `verify_retry_count` for this wave (start at 0 when wave begins).
 2. If `verify_retry_count >= max_verify_retries` (default **3**) → **escalate** (see Retry limits); do not retry until user responds.
 3. Parse `AFFECTED_SPRINTS`, `FAILURES`
-4. Re-spawn **same sprint** implementation — **3a-ui** or **3a-general** with `PRIOR VERIFY / WAVE TEST FAILURES` (description `Sprint {X.Y} — … (retry {n})`). **No fix-only sub-agents.**
+4. Re-spawn **same sprint** implementation — **3a-ui** or **3a-general** with `PRIOR VERIFY / WAVE TEST FAILURES` (description `Sprint {X.Y} — … (retry {n})`), run-log `attempt` = the new `verify_retry_count + 1`. **No fix-only sub-agents.**
 5. Wait for `SPRINT RESULT:` → re-spawn **3b-verify** only (one call this turn)
 6. Repeat until verify passes the gate (`PASS`, or `PARTIAL` outside strict mode), user says stop/skip, or escalation
 
@@ -572,7 +603,7 @@ Orchestrator logs: `↻ Verify — 5.3 (retry {n}/{max})`.
 For **each** implementation sub-agent final message in the wave:
 
 1. Extract `SPRINT RESULT:` — require a prior passing verify (`PASS`, or `PARTIAL` outside strict mode) before doc-sync payload is used
-2. Parse `COMPLETED`, `BLOCKED`, `BLOCKED_REASONS`, `NOTES` into the phase-doc-sync payload (one object per sprint, ascending `id`)
+2. Parse `COMPLETED`, `BLOCKED`, `BLOCKED_REASONS`, `MANUAL`, `NOTES` into the phase-doc-sync payload (one object per sprint, ascending `id`; `MANUAL` → `manual`). A result without a `MANUAL` line means `NONE`. Keep each `MANUAL` task and what NOTES says the user must do for the Step 4 checkpoint
 3. Do **not** edit the phase file in this step
 4. **Hold payload** on UI waves until **3f** passes — spawn **3c-sync** only after wave-test PASS/WARN
 
@@ -593,17 +624,18 @@ Spawn **exactly one** doc-sync call when:
 - **description:** `Doc sync — {sprint ids}` e.g. `Doc sync — 11.1` or `Doc sync — 11.2, 11.4`
 - **prompt:** phase-doc-sync template; `project_root` = **workspace_root**; `app_root` = **app_root**; `phase_file` relative to workspace_root; full JSON payload, including `run_log` (see Run log)
 - **model:** `gate_model` if resolved; a fresh agent each wave
+- **same turn:** the next wave's implementation call(s), when there is a next wave and 3d found no blockers (see Advance rule)
 
-Wait for `DOC SYNC RESULT:` **before 3e or before spawning any call for the next wave**.
+Wait for `DOC SYNC RESULT:` **before the next wave's verify**, and before the Step 4 checkpoint on the last wave.
 
 | DOC SYNC STATUS | Orchestrator action |
 |-----------------|---------------------|
-| SUCCESS | One-line log per sprint; set `diff_base` = `SNAPSHOT` (see Diff baseline); **then** 3d → 3e — next wave may start **in a new turn** |
-| PARTIAL / FAILED | Stop; show FAILURES and NOTES; offer retry doc-sync or manual fix |
+| SUCCESS | One-line log per sprint. Next wave continues as planned |
+| PARTIAL / FAILED | Let any in-flight implementation calls finish, but spawn nothing else. Show FAILURES and NOTES; offer retry doc-sync or manual fix. Once fixed, resume at the next wave's verify with the `diff_base` it already had |
 
 **Orchestrator rule:** Never directly edit `docs/phases/*.md` during an active phase run. All status column updates go through doc-sync.
 
-When the user skips a blocked task and says defer/cut, add `user_overrides` to the next doc-sync payload before spawning.
+When the user skips a blocked task and says defer/cut, or says it's theirs to do, add `user_overrides` to the next doc-sync payload before spawning (`DEFERRED`, `CUT` or `MANUAL`).
 
 ### 3f. Wave test sub-agent (per wave, when UI)
 
@@ -612,16 +644,19 @@ After **3c** (verify passed) and **before doc-sync**, if **`wave_has_ui`**:
 Spawn **exactly one** wave-test call:
 
 - **description:** `Wave test — {sprint ids}` e.g. `Wave test — 5.2, 5.3`
-- **prompt:** load the `phase-wave-test` skill per runtime-adapter.md; JSON with `project_root` = **app_root**, `workspace_root`, `design_system_doc` = `{workspace_root}/docs/design/design-system.md` (if it exists), `design_sections` (union of the wave's sprints), `harness_doc`, `tier`, `wave_sprints`, `skills_to_follow`, `test_urls`, `acceptance_notes`, `run_log` (see Run log)
-- **tier:** `full` on the wave's first test; `regression` with `retest_only` = the previous `FAILURES` on every retry; `light` when the wave's UI change has no new visual surface
+- **prompt:** load the `phase-wave-test` skill per runtime-adapter.md; JSON with `project_root` = **app_root**, `workspace_root`, `design_system_doc` = `{workspace_root}/docs/design/design-system.md` (if it exists), `design_sections` (union of the wave's sprints), `harness_doc`, `tier`, `wave_sprints`, `skills_to_follow`, `test_urls`, `acceptance_notes`, `e2e_specs`, `screenshot_dir`, `run_log` (see Run log)
+- **`skills_to_follow`:** each skill as the skill-router resolved it — an absolute `SKILL.md` path when you know it, otherwise the exact name to load with the skill tool. Never a bare name the tester would have to search the disk for
+- **`e2e_specs`:** the `E2E_SPECS` list from the last passing `VERIFY RESULT` (spec files in this wave's diff that verify ran and saw pass). The tester skips browser checks those specs already assert
+- **`screenshot_dir`:** `{workspace_root}/docs/phases/.runs/screenshots/phase-{N}/wave-{W}/`, absolute, forward slashes. Run noise, like the run log
+- **tier:** `full` on the wave's first test; `regression` with `retest_only` = the previous `FAILURES` on every retry; `light` when the wave's UI change has no new visual surface, or when it only scaffolds a screen that a later sprint builds out
 - **model:** `gate_model` if resolved; a **fresh** agent every time — first test and every retry (see Sub-agent lifecycle)
 
 Wait for `WAVE TEST RESULT:` **before 3c-sync** — never batch with verify or doc-sync in the same turn.
 
 | WAVE TEST STATUS | Orchestrator action |
 |------------------|---------------------|
-| PASS | `✓ Wave test — {ids} (PASS)` → **3c-sync** → 3d |
-| WARN | Log warnings → **3c-sync** → 3d (unless strict mode → treat as FAIL) |
+| PASS | `✓ Wave test — {ids} (PASS)` → 3d → **3c-sync** ∥ next wave |
+| WARN | Log warnings → 3d → **3c-sync** ∥ next wave (unless strict mode → treat as FAIL) |
 | FAIL | **3f-retry** — do not doc-sync or advance wave |
 
 **Skip 3f** when `wave_has_ui: false` (data-only wave) — go straight to **3c-sync** after verify.
@@ -633,7 +668,7 @@ On `WAVE TEST RESULT: STATUS: FAIL`:
 1. Increment `wave_test_retry_count` for this wave (start at 0 when wave begins).
 2. If `wave_test_retry_count >= max_wave_test_retries` (default **3**) → **escalate** (see Retry limits); do not retry until user responds.
 3. Parse `AFFECTED_SPRINTS`, `FAILURES`, `ISSUES`, `DESIGN_ISSUES`
-4. Re-spawn **same sprint** implementation (3a-ui / 3a-general, `(retry {n})`, failures injected). **No fix-only sub-agents.**
+4. Re-spawn **same sprint** implementation (3a-ui / 3a-general, `(retry {n})`, failures injected), run-log `attempt` = `verify_retry_count + 1`, unchanged. **No fix-only sub-agents.**
 5. Wait for `SPRINT RESULT:` → **3b-verify** (wait for `PASS`, or `PARTIAL` outside strict mode)
 6. Re-spawn **3f** only, fresh, at `tier: regression` with `retest_only` — **do not doc-sync** until wave-test PASS/WARN
 7. Repeat until `PASS`/`WARN`, user says stop/skip, or escalation
@@ -642,7 +677,7 @@ Orchestrator logs: `↻ Wave test — 5.3 (retry {n}/{max})`.
 
 ### 3d. Check for blockers
 
-If any tasks are BLOCKED (in any sprint of the current wave), **stop before the next wave** and report. For a parallel wave, list **which sprint** each blocker belongs to. Handle two categories differently:
+If any tasks are BLOCKED (in any sprint of the current wave), **stop before the next wave** and report. For a parallel wave, list **which sprint** each blocker belongs to. `MANUAL` tasks are not blockers: never stop for them, just carry them to the Step 4 checkpoint. Handle two categories of blocker differently:
 
 **"No tool available" blockers** — surface these with an install path:
 
@@ -674,13 +709,13 @@ Blocked task(s):
 
 Options:
   1. Resolve the blocker and re-run sprint {X.Y}
-  2. Skip the blocked task(s) and continue to sprint {X.Y+1}
+  2. Skip the blocked task(s) and continue to sprint {X.Y+1} — deferred, cut, or yours to do (MANUAL)
   3. Stop here
 
 What would you like to do?
 ```
 
-Do not proceed until the user responds. If they resolve it, re-run the implementation sub-agent for that sprint. If they skip, add `user_overrides` to the doc-sync payload (`DEFERRED` or `CUT`) and spawn doc-sync — still no orchestrator edits to the phase file.
+Do not proceed until the user responds. If they resolve it, re-run the implementation sub-agent for that sprint. If they skip, add `user_overrides` to the doc-sync payload (`DEFERRED` or `CUT`, or `MANUAL` when they say the task is theirs to do — e.g. "that one's mine") and spawn doc-sync — still no orchestrator edits to the phase file. A task overridden to `MANUAL` joins the checkpoint's manual list.
 
 ### 3e. Advance
 
@@ -693,7 +728,7 @@ If no blockers, log completion and move to the **next sprint or next wave**:
 ✓ Doc sync — {ids}           ← after all gates pass
 ```
 
-For a multi-sprint wave, log verify → wave-test (if UI) → doc-sync → one line per sprint. **Start the next wave only after doc-sync SUCCESS** — never in the same assistant turn as doc-sync.
+For a multi-sprint wave, log verify → wave-test (if UI) → doc-sync → one line per sprint. **Start the next wave's implementation in the same turn as this wave's doc-sync**, and hold its verify until `DOC SYNC RESULT: SUCCESS` (see Advance rule).
 
 ---
 
@@ -702,7 +737,7 @@ For a multi-sprint wave, log verify → wave-test (if UI) → doc-sync → one l
 After all sprints in the current phase are done (or you've reached the end of what was requested), **always pause** — never auto-advance to the next phase.
 
 **Before generating the checkpoint message:**
-- Re-read the completed phase file to get accurate sprint titles and task counts. Do not rely on memory — invent nothing.
+- Re-read the completed phase file to get accurate sprint titles and task counts. Do not rely on memory — invent nothing. Every task still `MANUAL` in it goes on the manual list, including ones planned that way in sprints that ran.
 - Read the next phase file to list what's ahead.
 
 Report:
@@ -715,6 +750,9 @@ Sprints run:
   ...
 {if any blockers were hit}
   ⚠ Sprint {X.Y} — {Title} has {N} blocked task(s) remaining
+{if any MANUAL tasks — reported this run, overridden to MANUAL, or in sprints skipped for being manual-only}
+Manual — yours to do (mark each x in the phase file when done):
+  ☐ {sprint id} #{N} — {task text} — {what the user must do, from NOTES, if given}
 {if verify left any criteria UNVERIFIED or scope notes}
 Needs a human check:
   ? {sprint id} — "{criterion}" — {what would decide it}
@@ -775,12 +813,11 @@ Migrations merged from a worktree are already applied to the shared local databa
 | Orchestrator tempted to run browser/QA tools directly | Don't — spawn wave-test instead |
 | Sub-agent times out or errors | Report it, offer to retry or skip; if part of a parallel wave, collect sibling outcomes then decide whether to retry failed sprint(s) alone or shrink the wave |
 | Git merge conflicts after parallel wave | Sign overlap was underestimated — resolve manually or re-run affected sprints sequentially with clearer ownership |
-| All sprints in phase already complete | Report "Phase {N} is fully complete — nothing to run" |
-| User says "stop" at any point | Stop immediately, report where you left off |
+| All sprints in phase already complete | Report "Phase {N} is fully complete — nothing to run", plus the manual list if any `MANUAL` tasks are left || User says "stop" at any point | Stop immediately, report where you left off |
 | Sub-agent blocked on "no tool available" | Surface install path: connector discovery, CLI install, or your environment's integration settings |
 | Tool connected mid-run | Re-inject updated tool inventory into next sub-agent prompt |
 | User requests a specific skill mid-run | Add to skill-router plan per skill-router.md override rules |
-| Orchestrator batches doc-sync + next sprint | Stop — wait for DOC SYNC SUCCESS; spawn next wave in **next turn** only |
+| Orchestrator spawns the next wave's verify before doc-sync returned | Stop — wait for DOC SYNC SUCCESS first; only the next wave's **implementation** may overlap doc-sync |
 | Orchestrator batches verify + wave-test + doc-sync | Stop — one gate per turn; see Wave sequencing |
 | Orchestrator spawns a "Fix {sprint}" or fixer sub-agent for code | Stop — use same-sprint re-implement `(retry n)` per Retry implementation only |
 | workspace_root vs app_root unclear | Resolve via project-layout.md at Step 1; never guess per sprint |
@@ -818,21 +855,19 @@ User: "Implement phase 5 with responsive-testing"
 
 [Step 1.5: skill-router …]
 
-[Turn 1 — Wave 5.1 only]
+[Turn 1 — Wave 1: 5.1 only]
 [Sub-agent: Sprint 5.1 → SPRINT RESULT]
 [Turn 2]
-[Sub-agent: Verify — 5.1 → VERIFY RESULT: PASS]
-[Turn 3]
-[Sub-agent: Doc sync — 5.1 → DOC SYNC RESULT: SUCCESS]
+[Sub-agent: Verify — 5.1 → VERIFY RESULT: PASS, SNAPSHOT = wave_end]
+[Turn 3 — doc-sync for wave 1 ∥ wave 2 implementation: 5.2 + 5.3]
+[Sub-agents: Doc sync — 5.1 + Sprint 5.2 + Sprint 5.3]
+  → DOC SYNC RESULT: SUCCESS, then both SPRINT RESULTs
 ✓ Sprint 5.1 complete
-
-[Turn 4 — Wave 5.2+5.3; parallel 3b only]
-[Sub-agent + Sub-agent: Sprint 5.2 + 5.3 → SPRINT RESULT]
-[Turn 5]
+[Turn 4]
 [Sub-agent: Verify — 5.2, 5.3 → PASS]
-[Turn 6]
+[Turn 5]
 [Sub-agent: Wave test — 5.2, 5.3 → PASS]
-[Turn 7]
+[Turn 6 — last wave: doc-sync alone]
 [Sub-agent: Doc sync — 5.2, 5.3 → SUCCESS]
 
 [On verify FAIL — no Fix task]
@@ -840,7 +875,7 @@ User: "Implement phase 5 with responsive-testing"
 [Turn N+1] [Sub-agent: Verify — 5.3 → PASS]
 …
 
-[Forbidden: Doc sync 5.1 + Sprint 5.2 same turn]
+[Forbidden: Doc sync 5.1 + Verify 5.2 same turn]
 [Forbidden: Verify 5.9 + Wave test 5.9 + Doc sync 5.9 same turn]
 [Forbidden: Sub-agent "Fix 5.4 titration test"]
 ```

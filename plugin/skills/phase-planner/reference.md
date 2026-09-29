@@ -75,7 +75,7 @@ Non-sprint sections (Risk Mitigations, Scope Guard, or anything else free-form) 
 - **No Status column at all:** migrate per the main SKILL.md migration steps before any other edit.
 - **Inconsistent status symbols** (e.g. some files use `[ ]`/`[x]` checkbox style instead of `—`/`x`): convert to the canonical symbol set on first touch, same as a missing-column migration. Note the conversion in your response so the user isn't surprised by an unrelated-looking diff.
 - **Duplicate task numbers** within one sprint (copy-paste error): flag it, don't guess which one is canonical — ask the user which to keep before any edit that touches that sprint.
-- **Task row with no plausible Module** (pure research/manual/decision tasks): this is expected and fine — use the three-column sparse form (`| Status | # | Task |`).
+- **Task row with no plausible Module** (pure research/manual/decision tasks): this is expected and fine — use the three-column sparse form (`| Status | # | Task |`). If only the user can do it, its Status is `MANUAL`.
 
 ## Verification section absent on an old sprint
 

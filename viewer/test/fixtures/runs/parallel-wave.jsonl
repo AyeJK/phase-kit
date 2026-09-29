@@ -1,0 +1,9 @@
+{"v":1,"ts":"2026-09-28T10:02:00Z","phase":3,"wave":1,"sprint":"3.1","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2 — Share model."}
+{"v":1,"ts":"2026-09-28T10:02:00Z","phase":3,"wave":1,"sprint":"3.2","gate":"implement","result":"blocked","attempt":1,"max":3,"summary":"done 1,2; blocked 3 — Needs an SMTP key."}
+{"v":1,"ts":"2026-09-28T10:04:10Z","phase":3,"wave":1,"sprint":"3.1","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 3/3 met"}
+{"v":1,"ts":"2026-09-28T10:04:09Z","phase":3,"wave":1,"sprint":"3.2","gate":"verify","result":"partial","attempt":1,"max":3,"summary":"criteria 2/3 met; 1 unverified"}
+{"v":1,"ts":"2026-09-28T10:06:30Z","phase":3,"wave":1,"sprint":"3.1","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"2 tasks updated","files":["src/share/model.ts","src/share/invite.ts","test/share.test.ts"]}
+{"v":1,"ts":"2026-09-28T10:06:30Z","phase":3,"wave":1,"sprint":"3.2","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"2 tasks updated","files":["src/share/model.ts","src/share/invite.ts","test/share.test.ts"]}
+{"v":1,"ts":"2026-09-28T10:15:02Z","phase":3,"wave":2,"sprint":"3.3","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3"}
+{"v":1,"ts":"2026-09-28T10:16:44Z","phase":3,"wave":2,"sprint":"3.3","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 2/2 met"}
+{"v":1,"ts":"2026-09-28T10:18:00Z","phase":3,"wave":2,"sprint":"3.3","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"3 tasks updated","files":["src/share/links.ts"]}

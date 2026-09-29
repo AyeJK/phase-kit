@@ -1,0 +1,8 @@
+{"v":1,"ts":"2026-09-20T09:00:10Z","phase":1,"wave":1,"sprint":"1.1","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3 — Tables and seed script."}
+{"v":1,"ts":"2026-09-20T09:02:00Z","phase":1,"wave":1,"sprint":"1.1","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 2/2 met"}
+{"v":1,"ts":"2026-09-20T09:03:30Z","phase":1,"wave":1,"sprint":"1.1","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"3 tasks updated","files":["db/migrations/001_books.sql","db/migrations/002_shelves.sql","scripts/seed.ts"]}
+{"v":1,"ts":"2026-09-20T09:10:00Z","phase":1,"wave":2,"sprint":"1.2","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3 — Importer."}
+{"v":1,"ts":"2026-09-20T09:11:45Z","phase":1,"wave":2,"sprint":"1.2","gate":"verify","result":"fail","attempt":1,"max":3,"summary":"test: dedupe keeps two rows for the same ISBN"}
+{"v":1,"ts":"2026-09-20T09:18:20Z","phase":1,"wave":2,"sprint":"1.2","gate":"implement","result":"pass","attempt":2,"max":3,"summary":"done 1,2,3 — Retry 1. Dedupe normalizes ISBN-10 to ISBN-13."}
+{"v":1,"ts":"2026-09-20T09:19:50Z","phase":1,"wave":2,"sprint":"1.2","gate":"verify","result":"pass","attempt":2,"max":3,"summary":"criteria 1/1 met"}
+{"v":1,"ts":"2026-09-20T09:21:05Z","phase":1,"wave":2,"sprint":"1.2","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"3 tasks updated","files":["README.md","src/import/csv.test.ts","src/import/csv.ts","src/import/dedupe.ts"]}

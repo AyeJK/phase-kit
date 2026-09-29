@@ -36,7 +36,7 @@ For each wave (one or more sprints running together):
 
 1. **`wave_has_ui`** — true if any sprint in the wave is `ui` or mixed-with-UI.
 2. **`verify_skills[]`** — usually just the stack's default check command from `project-layout.md`; add any skill explicitly named for verification (e.g. a project-specific test-running convention).
-3. **`wave_test_skills[]`** — only when `wave_has_ui`. Populate from skills matched to browser/visual/responsive testing keywords in your skill index, plus anything the user explicitly requested. **Do not assume a specific testing skill is installed** — if nothing matches and the user didn't request one, note in the plan that wave-test will do a basic manual-style check (navigate, screenshot, read console) without a named skill's specific methodology.
+3. **`wave_test_skills[]`** — only when `wave_has_ui`. Populate from skills matched to browser/visual/responsive testing keywords in your skill index, plus anything the user explicitly requested. Pass each one so the tester can open it without searching: the absolute `SKILL.md` path in `path` mode, or when your skill listing shows where it lives (the "Base directory" a loaded skill reports, or a known skills folder like `~/.claude/skills/{name}/SKILL.md` — check it exists); otherwise the exact name as your skill tool lists it. **Do not assume a specific testing skill is installed** — if nothing matches and the user didn't request one, note in the plan that wave-test will do a basic manual-style check (navigate, screenshot, read console) without a named skill's specific methodology.
 
 ## 5. Include the plan in the execution report
 

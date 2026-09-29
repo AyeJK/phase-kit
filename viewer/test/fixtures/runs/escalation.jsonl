@@ -1,0 +1,6 @@
+{"v":1,"ts":"2026-09-28T11:00:00Z","phase":2,"wave":2,"sprint":"2.5","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2"}
+{"v":1,"ts":"2026-09-28T11:01:30Z","phase":2,"wave":2,"sprint":"2.5","gate":"verify","result":"fail","attempt":1,"max":3,"summary":"test: 3 failing in test/derive.test.ts"}
+{"v":1,"ts":"2026-09-28T11:09:12Z","phase":2,"wave":2,"sprint":"2.5","gate":"implement","result":"pass","attempt":2,"max":3,"summary":"done 1,2 — Retry 1."}
+{"v":1,"ts":"2026-09-28T11:10:40Z","phase":2,"wave":2,"sprint":"2.5","gate":"verify","result":"fail","attempt":2,"max":3,"summary":"test: 1 failing in test/derive.test.ts"}
+{"v":1,"ts":"2026-09-28T11:18:05Z","phase":2,"wave":2,"sprint":"2.5","gate":"implement","result":"pass","attempt":3,"max":3,"summary":"done 1,2 — Retry 2."}
+{"v":1,"ts":"2026-09-28T11:19:33Z","phase":2,"wave":2,"sprint":"2.5","gate":"verify","result":"fail","attempt":3,"max":3,"summary":"test: 1 failing in test/derive.test.ts"}

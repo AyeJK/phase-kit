@@ -1,0 +1,174 @@
+/*
+ * States (design-system.md "States"): the empty, several-candidates and
+ * not-found blocks (on the shared `.empty` in base.css) and the
+ * parse-warnings banner (on the shared `.banner.warn` and `.btn`).
+ *
+ * Paths and commands are long and unbroken, so every chip and raw line may
+ * break anywhere: nothing here widens the page at 375 px.
+ */
+
+/* ---------- Empty, candidates, not found ---------- */
+
+.state-empty code {
+  overflow-wrap: anywhere;
+}
+.state-empty > p + p,
+.state-empty .state-next {
+  margin-top: 12px;
+}
+.state-empty .state-next {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* Where detection looked: label on the left, paths on the right. */
+.searched {
+  display: grid;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 20px auto 0;
+  text-align: left;
+}
+.searched > div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 4px 16px;
+  align-items: baseline;
+}
+.searched dt {
+  font: 600 11px/1.6 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.searched dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-2);
+}
+.searched .more {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* One row per candidate folder: its name, then the command that opens it. */
+.candidates {
+  display: grid;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 20px auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.candidates li {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+.candidates strong {
+  font-weight: 600;
+}
+.candidates code {
+  justify-self: start;
+  max-width: 100%;
+}
+
+/* ---------- Parse warnings ---------- */
+
+.parse-warnings {
+  min-width: 0;
+}
+
+/* Icon, text and button on the first row; the details list wraps under them. */
+.warn-banner {
+  flex-wrap: wrap;
+}
+.warn-banner .warn-text {
+  flex: 1;
+  min-width: 0;
+}
+.warn-banner strong {
+  overflow-wrap: anywhere;
+}
+.warn-banner .btn {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.warn-details {
+  flex-basis: 100%;
+  min-width: 0;
+  margin: 4px 0 0 28px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.warn-details[hidden] {
+  display: none;
+}
+.warn-file {
+  font: 500 13px var(--mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.warn-lines {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.warn-lines li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 2px 12px;
+  font: 13px var(--mono);
+}
+.warn-lines .ln {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.warn-lines .raw {
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.warn-lines .blank {
+  color: var(--text-3);
+}
+.warn-lines .why {
+  grid-column: 2;
+  font: 13px var(--sans);
+  color: var(--text-3);
+}
+
+@media (max-width: 640px) {
+  .searched > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The button drops under the text, lined up with it. */
+  .warn-banner .warn-text {
+    flex-basis: calc(100% - 28px);
+  }
+  .warn-banner .btn {
+    margin-left: 28px;
+  }
+  .warn-details {
+    margin-left: 0;
+  }
+  .warn-lines li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .warn-lines .why {
+    grid-column: 1;
+  }
+}

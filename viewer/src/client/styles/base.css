@@ -1,0 +1,182 @@
+/*
+ * Base styles and shared primitives (design-system.md: Type, Banners,
+ * Buttons and focus, States). Screen-specific styles live elsewhere.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent-text);
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-variant-ligatures: none;
+}
+
+code {
+  font-size: 12px;
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Label: mono 11px/600, uppercase by CSS (source text is sentence case). */
+.label {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* Focus: every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Status icons */
+.i {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.i.pass {
+  color: var(--passed);
+}
+.i.run {
+  color: var(--running);
+}
+.i.spin {
+  color: var(--running);
+  animation: i-spin 0.9s linear infinite;
+}
+@keyframes i-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* A still ring still reads as "in progress". */
+@media (prefers-reduced-motion: reduce) {
+  .i.spin {
+    animation: none;
+  }
+}
+.i.fail {
+  color: var(--failed);
+}
+.i.needs {
+  color: var(--needs);
+}
+.i.manual {
+  color: var(--manual);
+}
+.i.wait {
+  color: var(--text-3);
+}
+.i.warn {
+  color: var(--accent-text);
+}
+
+/* Banners */
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-radius: var(--r-banner);
+  border: 1px solid;
+  margin-bottom: 10px;
+}
+.banner .i {
+  margin-top: 2px;
+}
+.banner strong {
+  font-weight: 600;
+}
+.banner p {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.banner.esc {
+  border-color: var(--needs);
+  background: var(--needs-bg);
+}
+.banner.esc strong {
+  color: var(--needs);
+}
+.banner.warn {
+  border-color: var(--border-strong);
+  background: var(--warn-bg);
+}
+
+/* Button: the only labelled one is Show details on the parse-warnings banner. */
+.btn {
+  font: 500 13px/1 var(--sans);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--surface-2);
+}
+
+/* Empty / loading block */
+.empty {
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 48px 24px;
+  text-align: center;
+}
+.empty h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.empty p {
+  color: var(--text-2);
+}
+.empty code {
+  font-size: 13px;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+}
+
+/* Sprint id next to a title */
+.sid {
+  font: 600 13px var(--mono);
+  color: var(--accent-text);
+}

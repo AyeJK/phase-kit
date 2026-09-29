@@ -1,0 +1,221 @@
+/**
+ * Parser for a sprint's `### Verification` block: the `- key: value` bullets
+ * phase-builder reads to decide which checks and browser tests to run (see
+ * phase-planner's SKILL.md, "Verification section").
+ *
+ * | Key         | Model field  | Parsing |
+ * |-------------|--------------|---------|
+ * | `cli`       | `cli`        | the value, trimmed; a value wrapped in backticks is unwrapped |
+ * | `ui`        | `ui`         | split on commas, trimmed, backticks unwrapped |
+ * | `skills`    | `skills`     | split on commas, trimmed, backticks unwrapped |
+ * | `viewports` | `viewports`  | split on commas or spaces; `375` and `375px` read as 375; anything else dropped with a warning |
+ * | `skip-ui`   | `skipUi`     | `true` / `false` (also `yes` / `no`), any case; anything else is a warning |
+ * | `assert`    | `assert`     | one entry per `assert:` bullet; repeated keys collect |
+ * | other       | `extra`      | kept as written under the normalized key; a repeated key keeps its last value |
+ *
+ * Keys are case-insensitive; spaces and underscores in a key read as hyphens
+ * (`Skip UI`, `skip_ui` → `skip-ui`), and emphasis or code around the key is
+ * ignored (`**cli:**`, `` `cli`: ``). Only the first colon splits key from
+ * value, so values may contain colons. A few singular / plural slips are
+ * accepted (`viewport`, `skill`, `asserts`).
+ *
+ * Repeated `ui`, `skills` and `viewports` keys collect like `assert`; a
+ * repeated `cli` or `skip-ui` keeps its last value.
+ *
+ * Nested bullets under a key are more values for it:
+ *
+ * ```markdown
+ * - assert:
+ *   - Grid shows every book
+ *   - No layout break at 375px
+ * ```
+ *
+ * Indented continuation lines join onto the value with a space. Pure and
+ * never throws.
+ */
+import type { ParseResult, VerificationConfig, Warning } from '../model.js';
+import { warningAt, type SourceLine } from './lines.js';
+import { parseListItems, type ListItem } from './sections.js';
+
+/**
+ * The config of a sprint with no `### Verification` block: every list empty,
+ * no `cli` or `skipUi`, and `line` `0`.
+ */
+export function emptyVerification(line = 0): VerificationConfig {
+  return { ui: [], skills: [], viewports: [], assert: [], extra: {}, line };
+}
+
+const KEY = /^[a-z][a-z0-9-]{0,39}$/;
+
+const KEY_ALIASES = new Map<string, string>([
+  ['viewport', 'viewports'],
+  ['skill', 'skills'],
+  ['asserts', 'assert'],
+  ['skipui', 'skip-ui'],
+]);
+
+/** A `key: value` item plus any nested items under it. */
+interface Entry {
+  key: string;
+  value: string;
+  item: ListItem;
+  children: ListItem[];
+}
+
+/** One piece of value text and the line it came from. */
+interface ValuePart {
+  text: string;
+  line: SourceLine;
+}
+
+/** Drop emphasis or code around a leading key: `**cli:** x`, `**cli**: x`, `` `cli`: x `` → `cli: x`. */
+function unwrapKey(text: string): string {
+  return text.replace(/^(\*\*|__|\*|_|`)([^*_`:]+?)(:?)\1(:?)/, '$2$3$4');
+}
+
+/** Normalize a key: lowercase, emphasis dropped, spaces and underscores as hyphens, aliases applied. */
+export function normalizeVerificationKey(raw: string): string {
+  const key = raw
+    .replace(/[*`]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+  return KEY_ALIASES.get(key) ?? key;
+}
+
+/** Split `key: value` on the first colon. `null` when the text has no plausible key. */
+function splitPair(text: string): { key: string; value: string } | null {
+  const t = unwrapKey(text.trim());
+  const colon = t.indexOf(':');
+  if (colon <= 0) return null;
+  const key = normalizeVerificationKey(t.slice(0, colon));
+  if (!KEY.test(key)) return null;
+  return { key, value: t.slice(colon + 1).trim() };
+}
+
+/** A whole value wrapped in one pair of backticks, unwrapped. */
+function unwrapCode(text: string): string {
+  const t = text.trim();
+  const m = /^`([^`]*)`$/.exec(t);
+  return m ? (m[1] ?? '').trim() : t;
+}
+
+function parseBool(text: string): boolean | null {
+  const t = unwrapCode(text).toLowerCase();
+  if (t === 'true' || t === 'yes') return true;
+  if (t === 'false' || t === 'no') return false;
+  return null;
+}
+
+/** Value text of an entry: its inline value first, then each nested item. Empty parts dropped. */
+function valueParts(entry: Entry): ValuePart[] {
+  const parts: ValuePart[] = [{ text: entry.value, line: entry.item.line }];
+  for (const child of entry.children) parts.push({ text: child.text, line: child.line });
+  return parts.filter((p) => p.text.trim() !== '');
+}
+
+function commaList(parts: ValuePart[]): string[] {
+  return parts.flatMap((p) => p.text.split(',').map(unwrapCode)).filter((s) => s !== '');
+}
+
+/**
+ * Parse the body of a `### Verification` section.
+ *
+ * Warnings (on the offending line): a line that isn't a `key: value` pair, a
+ * known key with no value, a viewport that isn't a number, a `skip-ui` that
+ * isn't a boolean.
+ *
+ * @param lines The section body (the lines after the heading).
+ * @param headingLine 1-based line of the `### Verification` heading, stored as {@link VerificationConfig.line}.
+ * @param file File path for warnings.
+ */
+export function parseVerification(lines: SourceLine[], headingLine: number, file: string): ParseResult<VerificationConfig> {
+  const warnings: Warning[] = [];
+  const config = emptyVerification(headingLine);
+
+  // Group items: a `key: value` item owns the more-indented items after it.
+  const entries: Entry[] = [];
+  let parent: Entry | null = null;
+  for (const item of parseListItems(lines)) {
+    if (parent !== null && item.indent > parent.item.indent) {
+      parent.children.push(item);
+      continue;
+    }
+    const pair = splitPair(item.text);
+    if (!pair) {
+      parent = null;
+      warnings.push(warningAt(file, item.line, 'Verification line is not a "key: value" pair; ignored'));
+      continue;
+    }
+    parent = { ...pair, item, children: [] };
+    entries.push(parent);
+  }
+
+  const noValue = (entry: Entry): void => {
+    warnings.push(warningAt(file, entry.item.line, `Verification key "${entry.key}" has no value; ignored`));
+  };
+
+  for (const entry of entries) {
+    const parts = valueParts(entry);
+    switch (entry.key) {
+      case 'cli': {
+        if (parts.length === 0) noValue(entry);
+        else config.cli = parts.map((p) => unwrapCode(p.text)).join('\n');
+        break;
+      }
+      case 'ui':
+      case 'skills': {
+        const values = commaList(parts);
+        const list = entry.key === 'ui' ? config.ui : config.skills;
+        if (values.length === 0) noValue(entry);
+        else list.push(...values);
+        break;
+      }
+      case 'viewports': {
+        if (parts.length === 0) noValue(entry);
+        for (const part of parts) {
+          const cells = part.text
+            .replace(/(\d)\s*px\b/gi, '$1')
+            .split(/[,\s]+/)
+            .map(unwrapCode)
+            .filter((s) => s !== '');
+          for (const cell of cells) {
+            if (/^\d+$/.test(cell)) config.viewports.push(Number(cell));
+            else warnings.push(warningAt(file, part.line, `Viewport "${cell}" is not a number; dropped`));
+          }
+        }
+        break;
+      }
+      case 'skip-ui': {
+        if (parts.length === 0) {
+          noValue(entry);
+          break;
+        }
+        const text = parts.map((p) => p.text).join(' ');
+        const bool = parseBool(text);
+        if (bool === null) {
+          warnings.push(warningAt(file, entry.item.line, `skip-ui value "${text}" is not true or false; ignored`));
+        } else {
+          config.skipUi = bool;
+        }
+        break;
+      }
+      case 'assert': {
+        if (parts.length === 0) noValue(entry);
+        for (const part of parts) config.assert.push(part.text.trim());
+        break;
+      }
+      default: {
+        // defineProperty so no key can ever reach the object's prototype.
+        Object.defineProperty(config.extra, entry.key, {
+          value: parts.map((p) => p.text.trim()).join('\n'),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+    }
+  }
+
+  return { value: config, warnings };
+}

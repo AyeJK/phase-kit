@@ -1,0 +1,109 @@
+/*
+ * Design tokens (docs/design/design-system.md, "Viewer tokens").
+ *
+ * Theme is `data-theme="dark" | "light"` on <html>; dark is the default.
+ * Components use these variables only: no raw colour values elsewhere.
+ */
+
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces and text */
+  --bg: #121110;
+  --surface: #1a1917;
+  --surface-2: #221f1c;
+  --border: #2e2b27;
+  --border-strong: #423d36;
+  --text: #ece8e1;
+  --text-2: #b3ada4;
+  --text-3: #8a837a;
+
+  /* Accent (ids, the active filter, the selected phase, focus). Never a status. */
+  --accent: #ffb000;
+  --accent-text: #ffc233;
+  --accent-bg: rgba(255, 176, 0, 0.1);
+  --warn-bg: rgba(255, 176, 0, 0.08);
+  --wordmark: #ffe2a3;
+  --wordmark-glow: drop-shadow(0 0 3px rgba(255, 176, 0, 0.75)) drop-shadow(0 0 10px rgba(255, 120, 0, 0.35));
+
+  /* Status: colour is state */
+  --passed: #4cd480;
+  --passed-bg: rgba(76, 212, 128, 0.1);
+  --running: #5ccfe6;
+  --running-bg: rgba(92, 207, 230, 0.08);
+  --failed: #f87171;
+  --failed-bg: rgba(248, 113, 113, 0.1);
+  --needs: #f472c6;
+  --needs-bg: rgba(244, 114, 198, 0.1);
+  /* A MANUAL task (only you can do it): violet, apart from blocked pink. */
+  --manual: #a78bfa;
+  --manual-bg: rgba(167, 139, 250, 0.1);
+
+  /* Sprint cards inside a wave sit on --bg in dark, --surface in light. */
+  --card: var(--bg);
+
+  /* The layer behind the slide-in panel. */
+  --scrim: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --surface-2: #f2efe9;
+  --border: #e4dfd6;
+  --border-strong: #cfc8bc;
+  --text: #1f1c18;
+  --text-2: #544d44;
+  --text-3: #756d63;
+
+  --accent: #ffb000;
+  --accent-text: #9a6200;
+  --accent-bg: rgba(255, 176, 0, 0.14);
+  --warn-bg: rgba(255, 176, 0, 0.12);
+  --wordmark: #a86a00;
+  --wordmark-glow: none;
+
+  --passed: #15803d;
+  --passed-bg: rgba(21, 128, 61, 0.08);
+  --running: #0e7490;
+  --running-bg: rgba(14, 116, 144, 0.06);
+  --failed: #b91c1c;
+  --failed-bg: rgba(185, 28, 28, 0.06);
+  --needs: #be185d;
+  --needs-bg: rgba(190, 24, 93, 0.07);
+  --manual: #6d28d9;
+  --manual-bg: rgba(109, 40, 217, 0.07);
+
+  --card: var(--surface);
+
+  --scrim: rgba(31, 28, 24, 0.28);
+}
+
+:root {
+  /* Type */
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  /* Radii */
+  --r: 6px; /* buttons, sprint cards, sprint tiles, phase list rows, chevron */
+  --r-lg: 10px; /* kanban columns, wave cells, empty state */
+  --r-banner: 8px;
+  --r-sm: 4px; /* stage chips, badges, tags, mode label, code */
+
+  /* Layout */
+  --head: 56px; /* top bar, and the rail's heading bar */
+  --filter: 48px; /* filter row */
+  --panel: 1000px; /* slide-in panel width (never wider than the viewport) */
+  --list: 320px; /* list view phase column */
+  --kan-col-min: 180px; /* narrowest kanban column; the board scrolls sideways below this */
+  --wave-col: 180px; /* the rail's wave column */
+
+  /* Motion: the slide-in panel and its scrim (none under reduced motion). */
+  --slide: 280ms;
+
+  /* The amber "remaining" tint on a Waiting card (same mix as `tr.remaining`, on the card fill). */
+  --remaining-bg: color-mix(in srgb, var(--accent) 11%, var(--card));
+}

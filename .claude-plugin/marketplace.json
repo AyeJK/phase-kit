@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "phase-runner",
-      "source": "./",
+      "source": "./plugin",
       "description": "Plan phases, then let an orchestrator build them in parallel waves gated by independent verify, UI wave-test, and single-writer doc-sync sub-agents."
     }
   ]

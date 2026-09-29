@@ -19,7 +19,7 @@ The orchestrator MUST:
 2. Wait for `VERIFY RESULT:` before doc-sync (data-only) or before wave-test (UI waves)
 3. On `STATUS: FAIL` — orchestrator re-spawns affected implementation sprint(s) with `FAILURES`, then re-spawns verify until it passes the gate (`PASS`, or `PARTIAL` outside strict mode) or hits the retry limit (default 3, then escalate to user)
 4. Log only one line: `✓ Verify — {sprint ids} ({summary}; criteria {met}/{total} met)` — no CLI commands run directly in the orchestrator thread
-5. Pass `diff_base` (the `SNAPSHOT` from the doc-sync that ended the previous wave, or from a baseline call — see phase-builder "Diff baseline") so the review sees only this wave's changes
+5. Pass `diff_base` (the `SNAPSHOT` from the last passing verify of the previous wave, or from a baseline call — see phase-builder "Diff baseline") so the review sees only this wave's changes
 
 The orchestrator MUST NOT run build/typecheck/test commands, or grep for acceptance, during an active phase run.
 
@@ -70,7 +70,7 @@ The orchestrator MUST NOT run build/typecheck/test commands, or grep for accepta
 | `acceptance_checks` | Optional grep/file-exists checks named in acceptance criteria |
 | `fix_mode` | If `true`, apply minimal fixes and re-run; default `false` → report FAIL |
 | `acceptance` per sprint | Every acceptance criterion, verbatim. Each one gets a verdict in the review contract |
-| `tasks` per sprint | Task text plus its Module cell (`null` when the row has none). Module cells define the sprint's scope; task text decides whether a test change was asked for |
+| `tasks` per sprint | Task text plus its Module cell (`null` when the row has none). Module cells define the sprint's scope; task text decides whether a test change was asked for. `"manual": true` marks a task only the user can do |
 | `diff_base` | Git tree sha marking where this wave started. `null` → diff against `HEAD` at low confidence (see Review contract) |
 | `mode` | `verify` (default) or `baseline` — see Baseline mode |
 | `leak_check` | Worktree mode only. Run `git -C {repo_root} status --porcelain`; any path not in `baseline` means a sub-agent edited the main checkout instead of the worktree → `STATUS: FAIL`, list the paths in `FAILURES` |
@@ -82,11 +82,12 @@ The orchestrator MUST NOT run build/typecheck/test commands, or grep for accepta
 
 1. **Read assigned skills/docs**, if any — follow the project's documented build/test workflow (prefer whatever the project's own scripts define; build only when needed)
 1b. **Log implementation** — if `run_log` is present, append one `implement` line per entry in `run_log.sprint_results` (see [Run log](#run-log)). Run this append now, as its own command, before step 2 — never hold it back to write alongside the `verify` lines. A live viewer reads the `implement` line as "verifying has started"
-2. **Snapshot first** — take `NOW=$(snap)` (see Review contract) *before* running anything, so build and test output never lands in the wave's diff
+2. **Snapshot first** — take `NOW=$(snap)` (see Review contract) *before* running anything, so build and test output never lands in the wave's diff. Report it as `SNAPSHOT`: the orchestrator uses the wave's last passing verify's `SNAPSHOT` as the next wave's `diff_base`. `snap` failed → `SNAPSHOT: NONE — {reason}`, never an empty sha
 2b. **Resolve command** — per sprint `### Verification` `cli:`; if multiple sprints specify different commands, run all required commands in order
 3. **Run CLI checks** — from **app_root** (`project_root`); capture exit code and failure output
 4. **Run acceptance checks** — minimal grep / file-exists patterns from sprint acceptance when specified (not full exploratory QA)
 4b. **Review contract** — run the four checks in [Review contract](#review-contract-step-4b) below against the wave diff. Read the diff, not whole files; read a whole file only to trace one specific suspected problem. Budget: about 35 tool calls for the whole verify. When the budget runs out, mark the remaining criteria `UNVERIFIED` — never guess `MET` or `NOT_MET`.
+4c. **List `E2E_SPECS`** — on UI waves, the end-to-end/browser spec files (Playwright, Cypress and the like) that appear in the wave diff and passed in step 3. Wave-test reads them and skips what they already assert, so only list specs that actually ran
 5. **Map failures to sprints** — when stack traces, criteria, or the scope mapping show which sprint broke, set `AFFECTED_SPRINTS`; else `ALL`
 6. **If `fix_mode: true`** — apply minimal fixes, re-run failed commands, take a new `NOW`, and re-run step 4b so your own fixes get reviewed too
 6b. **Log the verdict** — once STATUS is decided, if `run_log` is present, append one `verify` line per sprint in `wave_sprints`
@@ -115,6 +116,8 @@ PowerShell: same git commands — set `$env:GIT_INDEX_FILE` to a temp path that 
 - `diff_base` is `null` → use `HEAD` in its place (no commits yet → git's empty tree, `git hash-object -t tree /dev/null`) and report `BASE: HEAD (confidence: low)`. The diff may include uncommitted work from before the run.
 - `--relative` limits the review to app_root, and Module cells are read relative to app_root. When app_root is a subfolder of the repo, also run `git diff --name-status {diff_base} "$NOW"` **without** `--relative`, and apply only the blocking out-of-scope rules (deleted files, `docs/phases/*.md`, CI/deploy config, env and auth config) to the paths outside app_root. When `docs/` sits outside the repo entirely, it isn't reviewed here.
 - app_root is not in a git repo → report `TEST_INTEGRITY: SKIPPED` and `SCOPE: SKIPPED`, and judge criteria by reading the files the tasks name.
+- **Did a failure exist before this wave?** Look, don't move anything: `git show {diff_base}:<path>` shows a file as the wave found it (it works on a tree sha), and `git diff {diff_base} "$NOW" -- <path>` shows what the wave did to it. If that can't settle it, say so in NOTES. Never stash, check out, or reset to find out — see "What you must not do".
+- **Status edits from the previous wave's doc-sync:** doc-sync runs while the next wave is implemented, so when the phase file is inside the repo, this wave's diff can include the previous wave's Status-cell edits to `docs/phases/*.md`. A hunk there that changes nothing but Status cells (`—`/`~` → `x`, `BLOCKED`, `MANUAL`, `DEFERRED`, `CUT`) is doc-sync's, not an implementer's: ignore it. Any other change to `docs/phases/*.md` is still blocking.
 
 ### a. Acceptance criteria — one verdict each
 
@@ -129,6 +132,7 @@ For every criterion of every sprint in `wave_sprints`:
 - No evidence → `UNVERIFIED`, never `MET`. The implementer's `COMPLETED` list is a claim, not evidence.
 - A suspicion without a citation → `UNVERIFIED`, never `NOT_MET`. False FAILs cost a full retry cycle.
 - Visual or interaction criteria on a UI wave → `UNVERIFIED (wave-test)`. Wave-test owns those; they are not a verify failure.
+- A criterion that only a `"manual": true` task can meet (the user publishes, installs or records it themselves) → `UNVERIFIED (manual)`, never `NOT_MET`. No retry can change it.
 
 ### b. Test integrity
 
@@ -219,6 +223,8 @@ TEST_INTEGRITY: CLEAN | FLAGGED | SKIPPED
 SCOPE: CLEAN | FLAGGED | NOT_DECLARED | SKIPPED
 - {file → nearest sprint, blocking or note — omit lines when CLEAN}
 BASE: {diff_base sha, or HEAD} (confidence: high | low)
+SNAPSHOT: {NOW — the tree sha taken in step 2 (or re-taken in fix_mode), or NONE — reason}
+E2E_SPECS: [end-to-end/browser spec files in the wave diff that ran and passed, paths relative to app_root, or NONE]
 FAILURES: [empty or actionable list — CLI failures plus blocking review findings]
 AFFECTED_SPRINTS: [sprint ids, or ALL]
 NOTES: [env quirks, pre-existing warnings]
@@ -238,5 +244,6 @@ NOTES: [env quirks, pre-existing warnings]
 - Run browser automation / responsive / visual QA — wave-test handles that on UI waves (before doc-sync)
 - Return without `VERIFY RESULT:`
 - Mark a criterion `MET` without citing evidence, or `NOT_MET` on a hunch
-- Stage, commit, or reset anything in the user's repo — the snapshot uses its own temporary index
+- Change git state in the user's repo. No `stash`, `checkout`, `switch`, `restore`, `reset`, `clean`, `commit`, `merge`, `rebase`, `pull`, or `add` outside the `snap` function's temporary index. The repo may hold hours of uncommitted work, and a stash that fails to pop strands it. Read-only git (`status`, `diff`, `show`, `log`, `rev-parse`) is all you need
+- Search the disk outside app_root and workspace_root (`find /`, globbing the home folder)
 - Dump long command output in the final message — summarize in `FAILURES`

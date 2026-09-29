@@ -1,0 +1,3 @@
+{"v":1,"ts":"2026-09-28T14:00:00Z","phase":2,"wave":1,"sprint":"2.2","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2,3,4"}
+{"v":1,"ts":"2026-09-28T14:03:41Z","phase":2,"wave":1,"sprint":"2.2","gate":"verify","result":"pass","attempt":1,"max":3,"summary":"criteria 5/5 met"}
+{"v":1,"ts":"2026-09-28T14:05:12Z","phase":2,"wave":1,"sprint":"2.2","gate":"doc_sync","result":"pa

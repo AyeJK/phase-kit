@@ -1,0 +1,5 @@
+# Fixtures are byte-exact test input: never convert line endings.
+test/fixtures/** -text
+# The broken fixture holds real stray bytes (NUL, invalid UTF-8).
+test/fixtures/broken/** binary
+test/fixtures/runs/binary-garbage.jsonl binary

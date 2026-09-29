@@ -17,7 +17,7 @@ The orchestrator MUST:
 
 1. Parse each implementation sub-agent's `SPRINT RESULT:` block into structured data
 2. Spawn **one** doc-sync call per wave (never edit `docs/phases/*.md` itself)
-3. Wait for your `DOC SYNC RESULT:` block before advancing to the next wave
+3. Wait for your `DOC SYNC RESULT:` block before the next wave's verify (the next wave's implementation may already be running alongside you)
 4. Log only a one-line summary per sprint (no direct edits to phase files in the orchestrator thread)
 
 The orchestrator MUST NOT edit `docs/phases/*.md` during an active phase run.
@@ -42,6 +42,7 @@ The orchestrator includes this JSON in your prompt:
       "completed": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       "blocked": [],
       "blocked_reasons": {},
+      "manual": [],
       "deferred": [],
       "cut": [],
       "notes": "optional string from SPRINT RESULT NOTES"
@@ -50,12 +51,15 @@ The orchestrator includes this JSON in your prompt:
   "user_overrides": [],
   "run_log": {
     "path": "/path/to/workspace/docs/phases/.runs/phase-11.jsonl", "phase": 11, "wave": 1, "attempt": 1, "max": 1,
-    "diff_base": "git tree sha the wave started from, or null"
+    "diff_base": "git tree sha the wave started from, or null",
+    "wave_end": "git tree sha of the code that passed the wave's last verify, or null"
   }
 }
 ```
 
-`run_log` is optional. When present, append `doc_sync` events after the snapshot (see Run log); when absent, write nothing.
+`run_log` is optional. When present, append `doc_sync` events after your edits (see Run log); when absent, write nothing.
+
+**You may be running alongside the next wave's implementation agents.** They edit app code, never the phase file, so there is nothing to coordinate — but don't read or diff the live working tree for this wave's changes. Use the two shas above.
 
 **Field rules:**
 
@@ -63,13 +67,14 @@ The orchestrator includes this JSON in your prompt:
 |-------|----------------|
 | `completed` | `x` |
 | `blocked` | `BLOCKED` |
+| `manual` | `MANUAL` |
 | `deferred` | `DEFERRED` |
 | `cut` | `CUT` |
-| `user_overrides` | After user says skip/defer — e.g. `[{ "id": "11.3", "task": 3, "status": "DEFERRED" }]` |
+| `user_overrides` | After user says skip/defer/cut, or that a task is theirs to do — e.g. `[{ "id": "11.3", "task": 3, "status": "DEFERRED" }]`. `status` is `DEFERRED`, `CUT` or `MANUAL` |
 
 Process sprints in **ascending ID order** (`X.Y` numeric) even if the payload order differs.
 
-If a task number appears in multiple lists, precedence: `blocked` > `deferred` > `cut` > `completed`.
+If a task number appears in multiple lists, precedence: `blocked` > `manual` > `deferred` > `cut` > `completed`. A `user_overrides` entry beats all of them.
 
 ---
 
@@ -89,8 +94,7 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
    - **Never** one edit per task row
    - **One write pass per phase file** for the whole payload (batch all sprint edits before writing, or sequential edits on the same file in one session — still no per-row spam)
 5. Verify with the same grep: every listed task shows the expected status. Don't re-read the file.
-6. **Snapshot for the next wave.** From `app_root`, run the `snap` function from the phase-verify skill's Review contract (a git tree of the whole working state, built with a temporary index — never stage or commit). It runs after your edits, so the next wave's review won't mistake them for implementer changes. `snap` exits non-zero or prints nothing (not a git repo, git error) → `SNAPSHOT: NONE` with the reason; never report an empty sha, and never fail the sync over it.
-6b. **Log the sync** — once STATUS is decided, if `run_log` is present, append one `doc_sync` line per sprint in the payload, with the wave's `files` (see [Run log](#run-log))
+6. **Log the sync** — once STATUS is decided, if `run_log` is present, append one `doc_sync` line per sprint in the payload, with the wave's `files` (see [Run log](#run-log))
 7. End with `DOC SYNC RESULT:` (required)
 
 ---
@@ -101,12 +105,13 @@ If a task number appears in multiple lists, precedence: `blocked` > `deferred` >
 |-------|---------|
 | `x` | Completed |
 | `BLOCKED` | Blocked |
+| `MANUAL` | Only the user can do it; they mark it `x` themselves |
 | `DEFERRED` | Deferred |
 | `CUT` | Cut from scope |
 | `—` | Not started (do not change unless explicitly in payload as reset) |
 | `~` | In progress (only set if orchestrator requests `mark_active`) |
 
-Do not change tasks not mentioned in the payload unless the orchestrator sends `mark_sprint_done: true` for a sprint with empty lists — then set **all** `—` and `~` rows in that sprint to `x` (whole sprint complete).
+Do not change tasks not mentioned in the payload unless the orchestrator sends `mark_sprint_done: true` for a sprint with empty lists — then set **all** `—` and `~` rows in that sprint to `x` (whole sprint complete). Leave `MANUAL` rows as they are.
 
 ---
 
@@ -119,7 +124,6 @@ FILE: {path relative to project root}
 SPRINTS_SYNCED: {comma-separated sprint ids, or NONE}
 TASKS_UPDATED: {total count}
 FAILURES: [sprint id + reason per line, or NONE]
-SNAPSHOT: {git tree sha of app_root after this sync, or NONE — reason}
 NOTES: [formatting issues, ambiguous rows, anything orchestrator should know]
 ```
 
@@ -133,7 +137,7 @@ NOTES: [formatting issues, ambiguous rows, anything orchestrator should know]
 
 Only when the payload has `run_log`. The spec is phase-builder's `run-log.md`; this is the part you need. Never write the log with a file-edit tool.
 
-**1. The wave's changed files.** Skip this line when `run_log.diff_base` is null or `SNAPSHOT` is `NONE`; the events then carry no `files`. Otherwise run it first, in the same command as the appends, with `{app_root}` = APP ROOT, `{diff_base}` = `run_log.diff_base` and `{snapshot}` = your SNAPSHOT sha:
+**1. The wave's changed files.** Skip this line when `run_log.diff_base` or `run_log.wave_end` is null; the events then carry no `files`. Otherwise run it first, in the same command as the appends, with `{app_root}` = APP ROOT, `{diff_base}` = `run_log.diff_base` and `{snapshot}` = `run_log.wave_end`:
 
 ```sh
 RL_FILES=$(cd '{app_root}' && git -c core.quotePath=false diff --relative --name-only {diff_base} {snapshot} -- ':(exclude)docs/phases') && RL_FILES=',"files":['"$(printf '%s' "$RL_FILES" | tr '\042\134' "'/" | sed 's/.*/"&"/' | paste -sd, -)"']' || RL_FILES=''
@@ -176,8 +180,8 @@ RULES:
 - Edit ONLY the phase file task Status columns for sprints in the payload
 - Batch edits — never one edit per task row
 - Do not modify acceptance criteria, dependencies, or overview prose
-- After editing, take the SNAPSHOT from APP ROOT (Execution step 6)
-- If the payload has run_log, append the doc_sync lines last (Execution step 6b)
+- Don't run git commands that change the working tree, index, stash or refs
+- If the payload has run_log, append the doc_sync lines last (Execution step 6)
 - End with DOC SYNC RESULT block
 
 If SPRINT RESULT was missing for a sprint but orchestrator verified acceptance and sent mark_sprint_done, mark all incomplete tasks in that sprint as x.
@@ -212,6 +216,5 @@ FILE: docs/phases/Phase-11-Example-Feature.md
 SPRINTS_SYNCED: 11.2
 TASKS_UPDATED: 7
 FAILURES: NONE
-SNAPSHOT: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 NOTES: none
 ```

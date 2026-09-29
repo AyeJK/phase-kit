@@ -1,0 +1,528 @@
+/*
+ * The phase rail (design-system.md "Unified interface": "Phase rail", "Rail
+ * sprint cards", "Sprint card states", "Run notes", and the heading bar of
+ * "Slide-in panel"). Badges, tags, the tasks table, criteria and plain lists
+ * come from `../sprint/sprint.css`; the status bar (`.seg-bar`) from
+ * `../styles/app.css`; banners from `../styles/base.css`.
+ *
+ * The rail is written to sit in the slide-in panel: the heading bar is flush
+ * and sticky at the top of its scroll container, and `.rail-body` carries the
+ * panel body's padding. The list view adjusts both for its rail side
+ * (`../list/list.css`).
+ *
+ * Every grid and flex child that holds text gets `min-width: 0` or
+ * `overflow-wrap: anywhere`, so long titles and summaries wrap instead of
+ * widening the page at 375 px.
+ */
+
+.phase-rail {
+  min-width: 0;
+}
+
+/* ---------- Heading bar ---------- */
+
+.rail-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--head);
+  padding: 0 20px 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.rail-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.rail-title .num {
+  /* Contains the screen-reader colon. */
+  position: relative;
+  flex-shrink: 0;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.rail-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 17px/1.3 var(--sans);
+  color: var(--text);
+}
+.rail-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  font: 500 12px var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.rail-head .status,
+.rail-head .tag {
+  flex-shrink: 0;
+}
+
+/* ---------- Body: banners, status bar, "Sprints" line ---------- */
+
+.rail-body {
+  padding: 20px 24px 40px;
+}
+.rail-banners .banner > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rail-banners .banner:last-child {
+  margin-bottom: 16px;
+}
+
+.rail-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 20px 0 12px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.rail-meta b {
+  font-weight: 500;
+  color: var(--text-2);
+}
+.rail-h {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.rail-last {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ---------- Rail rows and the wave column ---------- */
+
+.rail-row {
+  display: grid;
+  grid-template-columns: var(--wave-col) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Stretches to its row, so it visibly spans the sprints that ran together. */
+.wave-cell {
+  /* Contains the screen-reader state text. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.wave-cell.done {
+  border-color: var(--border-strong);
+}
+.wave-cell.running {
+  border-color: var(--running);
+  background: linear-gradient(var(--running-bg), var(--running-bg)), var(--surface);
+}
+/* No run log / Not run yet: transparent and dashed, never faded. */
+.wave-cell.dashed {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.wave-cell-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+}
+.wave-name {
+  font: 600 13px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.wave-cell.running .wave-name {
+  color: var(--running);
+}
+.wave-cell.dashed .wave-name {
+  color: var(--text-2);
+}
+.wave-cell-head .i {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+}
+
+/* Mode label: "Sequential" bare, "∥ Parallel" boxed in the accent. */
+.wave-cell .mode {
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.wave-cell .mode.par {
+  padding: 3px 6px;
+  color: var(--accent-text);
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--r-sm);
+}
+
+.wave-dur,
+.wave-retries {
+  font: 500 12px var(--mono);
+  white-space: nowrap;
+}
+.wave-dur {
+  color: var(--text-2);
+}
+.wave-dur.unlogged,
+.wave-retries {
+  color: var(--text-3);
+}
+/* The dots between items, only in the one-line header on narrow screens. */
+.wave-sep {
+  display: none;
+}
+
+/* A wave's cards stack; the wave cell carries the "ran together" grouping. */
+.rail-cards {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ---------- Sprint cards ---------- */
+
+.rail-card {
+  position: relative;
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  /* Clear the sticky top bar (or the panel's heading bar) when `#s{id}` lands here. */
+  scroll-margin-top: calc(var(--head) + 16px);
+}
+.rail-card.run {
+  border-color: var(--running);
+  background: linear-gradient(var(--running-bg), var(--running-bg)), var(--card);
+}
+.rail-card.needs {
+  border-color: var(--needs);
+}
+/* Needs you from a MANUAL task alone: violet, not blocked pink. */
+.rail-card.manual {
+  border-color: var(--manual);
+}
+/* Waiting: the amber remaining look, a tint and a 2px amber left edge. */
+.rail-card.remaining {
+  background: var(--remaining-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+/* Not run yet: transparent and dashed, never faded. */
+.rail-card.dashed {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.card-h {
+  font-size: inherit;
+  font-weight: inherit;
+}
+.card-toggle {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.card-toggle .sid {
+  flex-shrink: 0;
+  font: 600 14px var(--mono);
+  word-spacing: -0.3em;
+  color: var(--accent-text);
+}
+.card-toggle .sname {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.rail-card.dashed .sname {
+  color: var(--text-2);
+}
+.card-end {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.card-chev {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-3);
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+.rail-card[data-open='true'] .card-chev {
+  transform: none;
+}
+.card-toggle:hover .card-chev {
+  color: var(--text);
+}
+
+/* Waiting badge: amber text on the warning fill, the dot in the accent. */
+.status.remaining {
+  color: var(--accent-text);
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.status.remaining .i {
+  color: var(--accent);
+}
+
+.rail-card > .seg-bar {
+  margin-top: 10px;
+}
+
+/* ---------- Open card ---------- */
+
+.card-body {
+  margin-top: 14px;
+}
+.card-desc {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.card-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.card-sub > span:last-child {
+  font: 500 12px var(--mono);
+  color: var(--text-3);
+}
+.card-body .tasks tr:first-child td {
+  border-top: 0;
+}
+.card-body .none {
+  margin: 8px 0 0;
+}
+
+/* Collapsed rows under the tasks table: closed by default. */
+.card-rows {
+  margin-top: 12px;
+}
+.card-row {
+  border-top: 1px solid var(--border);
+}
+.card-row summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.card-row summary::-webkit-details-marker {
+  display: none;
+}
+.card-row summary svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-3);
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+.card-row[open] > summary svg {
+  transform: none;
+}
+.card-row summary:focus-visible {
+  outline-offset: -2px;
+}
+.card-row-label {
+  flex-shrink: 0;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.card-row summary:hover .card-row-label,
+.card-row summary:hover svg {
+  color: var(--text-2);
+}
+.card-row-end {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px var(--mono);
+  color: var(--text-3);
+}
+.card-row-end.text {
+  font: 13px var(--sans);
+}
+.card-row-body {
+  min-width: 0;
+  padding: 2px 0 12px 22px;
+}
+.card-row-body code {
+  font: 12px var(--mono);
+}
+
+/* Verification: key and value rows. */
+.rail-kv {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rail-kv li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+}
+.rail-kv .k {
+  font: 500 12px/21px var(--mono);
+  color: var(--text-3);
+}
+.rail-kv li span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Run notes ---------- */
+
+.run-notes .card-row-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 0 4px;
+}
+.run-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--failed-bg);
+  border-left: 2px solid var(--failed);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+.run-note.notes {
+  background: var(--surface-2);
+  border-left-color: var(--border-strong);
+}
+.run-note .i {
+  margin-top: 2px;
+}
+.run-note b {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--failed);
+}
+.run-note.notes b {
+  color: var(--text);
+}
+.run-note .when {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.run-note code {
+  grid-column: 2;
+  min-width: 0;
+  padding: 0;
+  font: 13px var(--mono);
+  color: var(--text);
+  background: none;
+  overflow-wrap: anywhere;
+}
+.run-note .then {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--text-3);
+}
+
+/* ---------- Breakpoints ---------- */
+
+/* The wave cell becomes a one-line header above its cards. */
+@media (max-width: 760px) {
+  .rail-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wave-cell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+  }
+  .wave-cell-head {
+    align-self: auto;
+  }
+  .wave-cell-head .i {
+    margin-left: 0;
+  }
+  .wave-sep {
+    display: inline;
+    color: var(--text-3);
+  }
+}
+
+/* The heading bar wraps: title on its own line, count and badge under it. */
+@media (max-width: 640px) {
+  .rail-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    height: auto;
+    min-height: var(--head);
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .rail-body {
+    padding: 16px 16px 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-chev,
+  .card-row summary svg {
+    transition: none;
+  }
+}

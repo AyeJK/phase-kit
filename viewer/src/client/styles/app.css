@@ -1,0 +1,134 @@
+/*
+ * App-wide pieces (design-system.md "Unified top bar", "Status bar",
+ * "Layout constants and breakpoints"): the top bar and wordmark, the status
+ * bar, links and screen-reader text. The filter row and state area are in
+ * `shell/shell.css`; the kanban, list view and rail have their own files.
+ */
+
+.app {
+  min-height: 100vh;
+}
+
+/*
+ * Screen-reader-only text. It's absolutely positioned, so its parent must be
+ * a containing block (position: relative): otherwise it's placed against the
+ * page and, inside a sideways-scrolling row, lands past the viewport and
+ * widens the page.
+ */
+.visually-hidden {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Top bar ---------- */
+
+.app-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: var(--head);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.wm {
+  display: block;
+  height: 28px;
+  width: auto;
+  color: var(--wordmark);
+  filter: var(--wordmark-glow);
+}
+.wm-lg {
+  height: 56px;
+  margin: 0 auto 20px;
+}
+
+/* ---------- Status bar ---------- */
+
+/* Status bar (components/StatusSegments.tsx): one segment per task status,
+   sized by count, full width. Each view sets its own spacing. The gaps
+   show whatever is behind; nothing to count shows a plain track. */
+.seg-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.seg-bar:empty {
+  background: var(--surface-2);
+}
+.seg-bar i {
+  flex-basis: 0;
+  min-width: 4px;
+}
+.seg-bar i[data-status='done'] {
+  background: var(--passed);
+}
+.seg-bar i[data-status='active'] {
+  background: var(--running);
+}
+.seg-bar i[data-status='blocked'] {
+  background: var(--needs);
+}
+.seg-bar i[data-status='manual'] {
+  background: var(--manual);
+}
+.seg-bar i[data-status='todo'],
+.seg-bar i[data-status='unknown'] {
+  background: var(--border-strong);
+}
+/* Once work has begun, not-started tasks show amber, as in the tasks table. */
+.seg-bar.started i[data-status='todo'] {
+  background: var(--accent);
+}
+.seg-bar i[data-status='deferred'] {
+  background: color-mix(in srgb, var(--text-3) 55%, transparent);
+}
+.seg-bar i[data-status='cut'] {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--text-3) 55%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+/* ---------- Links ---------- */
+
+a.link {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+a.link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Breakpoints ---------- */
+
+@media (max-width: 640px) {
+  .app-head {
+    padding: 0 16px;
+  }
+  .wm {
+    height: 20px;
+  }
+}
