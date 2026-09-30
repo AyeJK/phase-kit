@@ -192,6 +192,13 @@
   border-color: var(--running);
   background: linear-gradient(var(--running-bg), var(--running-bg)), var(--card);
 }
+.tile.fail {
+  border-color: var(--failed);
+  background: linear-gradient(var(--failed-bg), var(--failed-bg)), var(--card);
+}
+.tile.fail > .i {
+  color: var(--failed);
+}
 .tile.needs {
   border-color: var(--needs);
   background: linear-gradient(var(--needs-bg), var(--needs-bg)), var(--card);

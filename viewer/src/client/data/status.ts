@@ -81,6 +81,30 @@ export function sprintStatus(
   return 'waiting';
 }
 
+/** To-do and manual tasks in sprints that haven't started. See {@link notStartedTasks}. */
+export interface NotStarted {
+  todo: number;
+  manual: number;
+}
+
+/**
+ * To-do and manual tasks in the phase's sprints that haven't started (see
+ * {@link sprintStarted}). A phase bar draws these grey "not started": apart
+ * from the amber to-do tasks left in sprints already under way, and with a
+ * planned manual task kept quiet (not violet) until its sprint starts.
+ */
+export function notStartedTasks(project: Project, phase: Phase): NotStarted {
+  const runs = phaseRuns(project, phase.number);
+  const n: NotStarted = { todo: 0, manual: 0 };
+  for (const sprint of phase.sprints) {
+    const progress = project.progress.bySprint[sprint.id];
+    if (sprintStarted(progress, sprintRan(runs, sprint.id))) continue;
+    n.todo += progress?.byStatus.todo ?? 0;
+    n.manual += progress?.byStatus.manual ?? 0;
+  }
+  return n;
+}
+
 /** {@link sprintStatus} looked up from the project. */
 export function projectSprintStatus(project: Project, sprint: Sprint): SprintStatus {
   const runs = phaseRuns(project, sprint.phase);

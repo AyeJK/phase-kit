@@ -19,11 +19,13 @@ import {
   phaseGroup,
   phaseGroupCounts,
   railView,
+  runEnd,
   sprintCardState,
   type RailSprint,
   type RailView,
 } from '../../src/client/rail/derive.js';
 import { kanbanColumn } from '../../src/client/board/derive.js';
+import { notStartedTasks } from '../../src/client/data/status.js';
 import { phaseBadge, taskIcon } from '../../src/client/sprint/status.js';
 import { RUN_LOGS } from '../fixtures/index.js';
 
@@ -470,11 +472,146 @@ describe('sprint card states', () => {
     expect(card(rail(ui, 8), '8.1').stateText).toBe('Wave testing');
   });
 
-  it('reads Implementing while a failed verify is retried', () => {
-    const project = makeProject([
-      { n: 8, sprints: [['8.1', '--']], log: jsonl([head[0]!, [2, 1, '8.1', 'verify', 'fail', 1]]) },
+  it('reads Verify failed, then Re-implementing and Re-verifying while a failed verify is retried, counting the retry from its start line', () => {
+    const failed: LineSpec[] = [head[0]!, [2, 1, '8.1', 'verify', 'fail', 1, 'test: 2 failing']];
+    const project = makeProject([{ n: 8, sprints: [['8.1', '--']], log: jsonl(failed) }]);
+    const v = rail(project, 8);
+    expect(card(v, '8.1').state).toBe('verify-failed');
+    expect(card(v, '8.1').stateText).toBe('Verify failed');
+    expect(card(v, '8.1').failure).toMatchObject({
+      note: { gate: 'verify', attempt: 1, title: 'Verify attempt 1 failed', summary: 'test: 2 failing' },
+      statusText: 'Retry next · 2 attempts left',
+    });
+    expect(v.rows[0]!.retries).toBe(0);
+    expect(runEnd(v)).toBeNull();
+    expect(phaseGroup(project, project.phases[0]!)).toBe('progress');
+    expect(kanbanColumn(project, project.phases[0]!).tiles[0]).toMatchObject({ state: 'verify-failed', running: true });
+
+    const retrying = makeProject([{ n: 8, sprints: [['8.1', '--']], log: jsonl([...failed, [3, 1, '8.1', 'implement', 'start', 2]]) }]);
+    const r = rail(retrying, 8);
+    expect(card(r, '8.1').stateText).toBe('Re-implementing');
+    expect(card(r, '8.1').failure?.statusText).toBe('Retrying with the failure attached');
+    expect(r.rows[0]!.retries).toBe(1);
+
+    const retried = makeProject([
+      { n: 8, sprints: [['8.1', '--']], log: jsonl([...failed, [3, 1, '8.1', 'implement', 'start', 2], [5, 1, '8.1', 'implement', 'pass', 2]]) },
     ]);
-    expect(card(rail(project, 8), '8.1').stateText).toBe('Implementing');
+    const rv = rail(retried, 8);
+    expect(card(rv, '8.1').stateText).toBe('Re-verifying');
+    expect(card(rv, '8.1').failure?.statusText).toBe('Verifying the retry');
+    expect(rv.rows[0]!.retries).toBe(1);
+
+    // Verify passes: the failure is fixed, so the open card no longer shows it (Run notes keeps it).
+    const fixed = makeProject([
+      {
+        n: 8,
+        sprints: [['8.1', '--']],
+        log: jsonl([...failed, [3, 1, '8.1', 'implement', 'start', 2], [5, 1, '8.1', 'implement', 'pass', 2], [6, 1, '8.1', 'verify', 'pass', 2]]),
+      },
+    ]);
+    expect(card(rail(fixed, 8), '8.1').stateText).toBe('Doc syncing');
+    expect(card(rail(fixed, 8), '8.1').failure).toBeNull();
+    expect(card(rail(fixed, 8), '8.1').runNotes).toHaveLength(1);
+  });
+
+  it('reads Wave test failed, then the retry through Re-verifying and Wave retesting', () => {
+    const ui: SprintSpec = ['8.1', '--', '- ui: /'];
+    const failed: LineSpec[] = [...head, [3, 1, '8.1', 'wave_test', 'fail', 1, 'banner scrolls sideways at 375px']];
+    const state = (lines: LineSpec[]): string => card(rail(makeProject([{ n: 8, sprints: [ui], log: jsonl(lines) }]), 8), '8.1').stateText;
+    expect(state(head)).toBe('Wave testing');
+    expect(state(failed)).toBe('Wave test failed');
+    const retry: LineSpec[] = [...failed, [4, 1, '8.1', 'implement', 'start', 2]];
+    expect(state(retry)).toBe('Re-implementing');
+    expect(state([...retry, [5, 1, '8.1', 'implement', 'pass', 2]])).toBe('Re-verifying');
+    const retest: LineSpec[] = [...retry, [5, 1, '8.1', 'implement', 'pass', 2], [6, 1, '8.1', 'verify', 'pass', 2]];
+    expect(state(retest)).toBe('Wave retesting');
+    const v = rail(makeProject([{ n: 8, sprints: [ui], log: jsonl(retest) }]), 8);
+    expect(card(v, '8.1').failure?.note.gate).toBe('wave_test');
+  });
+
+  it('reads Needs you, not Verify failed, once verify fails at the retry limit', () => {
+    const lines: LineSpec[] = [head[0]!, [2, 1, '8.1', 'verify', 'fail', 3]];
+    const v = rail(makeProject([{ n: 8, sprints: [['8.1', '--']], log: jsonl(lines) }]), 8);
+    expect(card(v, '8.1').state).toBe('needs-you');
+    expect(card(v, '8.1').failure).toBeNull();
+  });
+
+  it('runEnd: nothing while a gate runs; "Phase run complete" once done; what needs you when a task is blocked', () => {
+    const wave1: LineSpec[] = [
+      [0, 1, '8.1', 'implement', 'start', 1],
+      [5, 1, '8.1', 'implement', 'pass', 1],
+      [6, 1, '8.1', 'verify', 'pass', 1],
+    ];
+    const running = makeProject([{ n: 8, sprints: [['8.1', '--']], log: jsonl(wave1) }]);
+    expect(runEnd(rail(running, 8))).toBeNull();
+
+    const done = makeProject([{ n: 8, sprints: [['8.1', 'xx']], log: jsonl([...wave1, [7, 1, '8.1', 'doc_sync', 'pass', 1]]) }]);
+    expect(runEnd(rail(done, 8))).toEqual({ kind: 'pass', title: 'Phase run complete', attentionText: null, items: [] });
+
+    const blocked = makeProject([
+      {
+        n: 8,
+        sprints: [['8.1', 'xx'], ['8.2', 'xBx']],
+        log: jsonl([
+          ...wave1,
+          [7, 1, '8.1', 'doc_sync', 'pass', 1],
+          [8, 2, '8.2', 'implement', 'start', 1],
+          [12, 2, '8.2', 'implement', 'blocked', 1, 'done 1,3; blocked 2 — needs a call'],
+          [13, 2, '8.2', 'verify', 'partial', 1],
+          [14, 2, '8.2', 'doc_sync', 'pass', 1],
+        ]),
+      },
+    ]);
+    expect(runEnd(rail(blocked, 8))).toEqual({
+      kind: 'needs',
+      title: 'Phase run complete',
+      attentionText: '1 task needs your attention',
+      items: ['Sprint 8.2 · task 2 blocked'],
+    });
+
+    // Stopped with a sprint left and nothing blocked: no line.
+    const stopped = makeProject([{ n: 8, sprints: [['8.1', 'xx'], ['8.2', '--']], log: jsonl([...wave1, [7, 1, '8.1', 'doc_sync', 'pass', 1]]) }]);
+    expect(runEnd(rail(stopped, 8))).toBeNull();
+  });
+
+  it('notStartedTasks: counts only the to-do and manual tasks of sprints that have not started', () => {
+    const project = makeProject([
+      { n: 8, sprints: [['8.1', 'x-M'], ['8.2', '--M'], ['8.3', '~-']], log: jsonl([[0, 1, '8.1', 'implement', 'start', 1]]) },
+    ]);
+    expect(notStartedTasks(project, project.phases[0]!)).toEqual({ todo: 2, manual: 1 });
+    expect(kanbanColumn(project, project.phases[0]!).notStarted).toEqual({ todo: 2, manual: 1 });
+  });
+
+  it('reads Waiting for a sprint that passed verify while its parallel sibling retries, then Doc syncing once both pass', () => {
+    const wave: LineSpec[] = [
+      [0, 1, '8.1', 'implement', 'start', 1],
+      [0, 1, '8.2', 'implement', 'start', 1],
+      [5, 1, '8.1', 'implement', 'pass', 1],
+      [5, 1, '8.2', 'implement', 'pass', 1],
+      [6, 1, '8.1', 'verify', 'pass', 1],
+      [6, 1, '8.2', 'verify', 'fail', 1],
+      [7, 1, '8.2', 'implement', 'start', 2],
+    ];
+    const sprints: SprintSpec[] = [['8.1', '--'], ['8.2', '--']];
+    const retrying = makeProject([{ n: 8, sprints, log: jsonl(wave) }]);
+    expect(card(rail(retrying, 8), '8.1').stateText).toBe('Waiting');
+    expect(card(rail(retrying, 8), '8.2').stateText).toBe('Re-implementing');
+    expect(sprintCardState(retrying, retrying.phases[0]!.sprints[0]!)).toBe('waiting');
+    expect(phaseGroup(retrying, retrying.phases[0]!)).toBe('progress');
+
+    const reverifying = makeProject([{ n: 8, sprints, log: jsonl([...wave, [9, 1, '8.2', 'implement', 'pass', 2]]) }]);
+    expect(card(rail(reverifying, 8), '8.1').stateText).toBe('Waiting');
+    expect(card(rail(reverifying, 8), '8.2').stateText).toBe('Re-verifying');
+
+    const passed = makeProject([
+      {
+        n: 8,
+        sprints,
+        log: jsonl([...wave, [9, 1, '8.2', 'implement', 'pass', 2], [10, 1, '8.1', 'verify', 'pass', 2], [10, 1, '8.2', 'verify', 'pass', 2]]),
+      },
+    ]);
+    expect(card(rail(passed, 8), '8.1').stateText).toBe('Doc syncing');
+    expect(card(rail(passed, 8), '8.2').stateText).toBe('Doc syncing');
   });
 
   it('reads Needs you for a blocked task or an open escalation', () => {

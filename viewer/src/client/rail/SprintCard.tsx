@@ -5,12 +5,13 @@
  *
  * - Collapsed: a toggle row ("Sprint 2.1", the title, the state badge and a
  *   chevron), then the sprint's status bar (left out once it's Complete; the
- *   badge says it all).
+ *   badge says it all). A card that turns Complete while on screen keeps its
+ *   all-green bar for {@link COMPLETE_BAR_MS} first.
  * - Open: the goal, the tasks table (shared `TasksTable`, not-started rows in
- *   amber once the sprint has begun), then collapsed rows: Acceptance
- *   criteria (count), Dependencies (as text), Verification (count) and Run
- *   notes (count; left out when the sprint has none). Attempt notes appear
- *   only inside Run notes.
+ *   amber once the sprint has begun), the failure being retried (while there
+ *   is one), then collapsed rows: Acceptance criteria (count), Dependencies
+ *   (as text), Verification (count) and Run notes (count; left out when the
+ *   sprint has none). Every attempt note stays in Run notes.
  *
  * The card's open state belongs to the rail (`PhaseRail.tsx`); the rows are
  * native `<details>`, closed by default, and keep their own state across
@@ -18,11 +19,12 @@
  *
  * Test hooks: `article[data-sprint-card]` (with `data-state`, `data-open`),
  * `card-toggle`, `card-state` (with `data-state`), `card-status-bar`,
- * `card-body`, `details[data-row]` (`criteria`, `dependencies`,
+ * `card-body`, `card-failure` (with `data-gate`, `data-attempt`),
+ * `card-failure-next`, `details[data-row]` (`criteria`, `dependencies`,
  * `verification`, `run-notes`) and `run-note` (with `data-kind`, `data-gate`,
  * `data-attempt`, `data-resolved`).
  */
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Sprint, VerificationConfig } from '../../core/model.js';
 import { StatusIcon, type IconKind } from '../components/StatusIcon.js';
 import { StatusSegments } from '../components/StatusSegments.js';
@@ -30,24 +32,12 @@ import { paths } from '../shell/router.js';
 import { Inline } from '../sprint/markdown.js';
 import { CriteriaList, TasksTable } from '../sprint/parts.js';
 import { doneOfEligible } from '../sprint/status.js';
-import type { RailSprint, RunNote, SprintState } from './derive.js';
-
-/** Card states drawn in the running style (a gate is next). */
-const RUNNING_STATES: ReadonlySet<SprintState> = new Set<SprintState>([
-  'implementing',
-  'verifying',
-  'wave-testing',
-  'doc-syncing',
-]);
-
-/** Whether a card state is one of the gate (running) states. */
-export function isRunningState(state: SprintState): boolean {
-  return RUNNING_STATES.has(state);
-}
+import { isFailedState, isGateState, type CurrentFailure, type RailSprint, type RunNote, type SprintState } from './derive.js';
 
 /** Badge class (`.status.{kind}`) per state; `not-started` is a plain tag instead. */
-function badgeKind(state: SprintState): 'run' | 'pass' | 'needs' | 'manual' | 'remaining' {
-  if (RUNNING_STATES.has(state)) return 'run';
+function badgeKind(state: SprintState): 'run' | 'fail' | 'pass' | 'needs' | 'manual' | 'remaining' {
+  if (isGateState(state)) return 'run';
+  if (isFailedState(state)) return 'fail';
   if (state === 'complete') return 'pass';
   if (state === 'needs-you') return 'needs';
   if (state === 'manual') return 'manual';
@@ -57,7 +47,8 @@ function badgeKind(state: SprintState): 'run' | 'pass' | 'needs' | 'manual' | 'r
 /** Card class per state: the border and tint the design gives each. */
 function cardClass(state: SprintState, dashed: boolean): string {
   if (dashed) return 'rail-card dashed';
-  if (RUNNING_STATES.has(state)) return 'rail-card run';
+  if (isGateState(state)) return 'rail-card run';
+  if (isFailedState(state)) return 'rail-card fail';
   if (state === 'needs-you') return 'rail-card needs';
   if (state === 'manual') return 'rail-card manual';
   if (state === 'waiting') return 'rail-card remaining';
@@ -78,6 +69,7 @@ export function SprintCard({ sprint, open, onToggle, dashed, headingLevel }: Spr
   const bodyId = `sb${sprint.id}`;
   const title = sprint.title === '' ? 'Untitled' : sprint.title;
   const Heading = `h${headingLevel}` as const;
+  const justCompleted = useJustCompleted(sprint.state);
   return (
     <article
       className={cardClass(sprint.state, dashed)}
@@ -103,13 +95,39 @@ export function SprintCard({ sprint, open, onToggle, dashed, headingLevel }: Spr
           </span>
         </button>
       </Heading>
-      {sprint.state !== 'complete' && <StatusSegments progress={sprint.progress} testId="card-status-bar" />}
+      {(sprint.state !== 'complete' || justCompleted) && <StatusSegments progress={sprint.progress} testId="card-status-bar" />}
 
       <div className="card-body" id={bodyId} hidden={!open} data-testid="card-body">
         {open && <CardBody sprint={sprint} />}
       </div>
     </article>
   );
+}
+
+/** How long a card that just turned Complete keeps its (now all green) status bar. */
+export const COMPLETE_BAR_MS = 1_500;
+
+/**
+ * True for {@link COMPLETE_BAR_MS} after the card's state changes to
+ * `complete` while it's on screen, so the bar is seen full and green before
+ * it goes. A card that loads already complete never shows it. Set in a layout
+ * effect, so the bar doesn't blink out for a frame first.
+ */
+function useJustCompleted(state: SprintState): boolean {
+  const [just, setJust] = useState(false);
+  const previous = useRef(state);
+  useLayoutEffect(() => {
+    const was = previous.current;
+    previous.current = state;
+    if (state !== 'complete' || was === 'complete') return;
+    setJust(true);
+    const timer = window.setTimeout(() => setJust(false), COMPLETE_BAR_MS);
+    return () => {
+      window.clearTimeout(timer);
+      setJust(false);
+    };
+  }, [state]);
+  return just;
 }
 
 /**
@@ -130,6 +148,7 @@ function CardBody({ sprint }: { sprint: RailSprint }) {
         <span>{doneOfEligible(sprint.progress)}</span>
       </div>
       <TasksTable tasks={s.tasks} />
+      {sprint.failure !== null && <FailureRow failure={sprint.failure} />}
 
       <div className="card-rows">
         <CardRow name="criteria" label="Acceptance criteria" end={countText(s.acceptanceCriteria.length)}>
@@ -163,7 +182,8 @@ export function StateBadge({ state, text }: { state: SprintState; text: string }
     );
   }
   const kind = badgeKind(state);
-  const icon: IconKind = kind === 'remaining' ? 'wait' : kind;
+  // A failed gate is still working (its retry is next): the spinner, in red.
+  const icon: IconKind = kind === 'remaining' ? 'wait' : kind === 'fail' ? 'run' : kind;
   return (
     <span className={`status ${kind}`} data-testid="card-state" data-state={state}>
       <StatusIcon kind={icon} />
@@ -283,6 +303,31 @@ function VerificationList({ verification }: { verification: VerificationConfig }
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The failure being retried, under the tasks table: what failed and why (red),
+ * then where the retry has got to (amber).
+ */
+function FailureRow({ failure }: { failure: CurrentFailure }) {
+  const { note } = failure;
+  return (
+    <div className="card-failure" data-testid="card-failure" data-gate={note.gate} data-attempt={note.attempt}>
+      <p className="card-failure-why">
+        <b>
+          {note.title}
+          {note.summary !== '' && '.'}
+        </b>{' '}
+        {note.summary}
+        {note.time !== '' && <span className="when"> · {note.time}</span>}
+      </p>
+      {failure.statusText !== '' && (
+        <p className="card-failure-next" data-testid="card-failure-next">
+          {failure.statusText}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -10,7 +10,7 @@
  * when a title wraps or a head holds tags.
  *
  * A tile shows its state icon, id and title; a running tile adds its state
- * badge ("Implementing"). Other tiles carry the state word as visually
+ * badge ("Implementing", or red "Verify failed" before a retry). Other tiles carry the state word as visually
  * hidden text, so the icon is never the only carrier. The link's accessible
  * name is "Phase 2: Core Model"; the tiles describe it.
  *
@@ -22,7 +22,7 @@ import { useId } from 'react';
 import { StatusIcon, type IconKind } from '../components/StatusIcon.js';
 import { StatusSegments } from '../components/StatusSegments.js';
 import { plural } from '../format.js';
-import type { PhaseFilter, SprintState } from '../rail/derive.js';
+import { isFailedState, type PhaseFilter, type SprintState } from '../rail/derive.js';
 import { Link, paths } from '../shell/router.js';
 import type { KanbanColumn as Column, KanbanTile } from './derive.js';
 
@@ -30,6 +30,8 @@ import type { KanbanColumn as Column, KanbanTile } from './derive.js';
 export const PANEL_ENTRY = { panel: true } as const;
 
 function tileLook(state: SprintState, running: boolean): { icon: IconKind; className: string } {
+  // A failed gate is still working (its retry is next): the spinner, in red.
+  if (isFailedState(state)) return { icon: 'run', className: 'tile fail' };
   if (running) return { icon: 'run', className: 'tile run' };
   switch (state) {
     case 'complete':
@@ -54,7 +56,7 @@ function Tile({ tile }: { tile: KanbanTile }) {
       <span className="tile-name">{tile.title}</span>
       {tile.running ? (
         <span className="tile-badge">
-          <span className="status run" data-testid="tile-badge">
+          <span className={isFailedState(tile.state) ? 'status fail' : 'status run'} data-testid="tile-badge">
             {tile.stateText}
           </span>
         </span>
@@ -117,7 +119,7 @@ export function KanbanColumn({ column, open, show }: KanbanColumnProps) {
       <span className="kan-title" title={title} data-testid="kan-title">
         {title}
       </span>
-      <StatusSegments progress={column.progress} testId="phase-status-bar" />
+      <StatusSegments progress={column.progress} notStarted={column.notStarted} testId="phase-status-bar" />
       <ol className="kan-tiles" id={tilesId}>
         {column.tiles.map((tile) => (
           <Tile key={tile.id} tile={tile} />

@@ -43,6 +43,10 @@
   background: var(--failed-bg);
   border-color: var(--failed);
 }
+/* A failed gate about to retry carries the (blue) running spinner: red here. */
+.status.fail .i {
+  color: var(--failed);
+}
 .status.needs {
   color: var(--needs);
   background: var(--needs-bg);

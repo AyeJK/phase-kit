@@ -27,8 +27,8 @@
  * first wave of a run with no start marker reads "start not logged". A wave
  * whose sprints aren't all done is running and reads "N min so far".
  *
- * **Retries** per wave are the extra implement attempts across its sprints
- * (implement lines after each sprint's first; start markers don't count).
+ * **Retries** per wave are the extra implementation runs across its sprints
+ * (see {@link waveRetries}): a retry counts from its start marker.
  *
  * **Sprint card state**, first match wins:
  *
@@ -36,7 +36,10 @@
  * |-------|------|
  * | Needs you (`needs-you`, pink) | A task is blocked, or the sprint's latest wave ended in an escalation |
  * | Needs you (`manual`, violet) | A manual task is left and the sprint has started (a task done or running, or run events for it). Blocked wins when both apply |
- * | Implementing, Verifying, Wave testing, Doc syncing | The sprint's derived next gate in the phase's latest run. After a failed verify or wave test (not escalated) the next gate is Implement, the retry |
+ * | Waiting | The sprint passed verify or the wave test, but a sibling in its wave hasn't, so the wave's next gate can't run yet (typically the sibling is retrying) |
+ * | Verify failed, Wave test failed (red) | The sprint's latest step in the phase's latest run is a failed verify or wave test with retries left (not escalated), and the retry hasn't started |
+ * | Implementing, Verifying, Wave testing, Doc syncing | The sprint's derived next gate in the phase's latest run |
+ * | Re-implementing, Re-verifying, Wave retesting | The same, when that gate already ran for the sprint in this wave: a retry after a failure (or a re-check after a sibling's) |
  * | Complete | Every eligible task done |
  * | Waiting | Some tasks done, the rest not |
  * | Not started | Anything else (a manual task in a sprint that hasn't started included) |
@@ -44,6 +47,8 @@
  * **Run notes** per sprint, in log order across every wave it ran in: each
  * failed attempt (with how it was resolved, once a later run of the same
  * gate passed), and each `partial` or `warn` result as "passed with notes".
+ * While a failure is being retried, the open card also shows it under the
+ * tasks table (see {@link currentFailure}).
  *
  * **Filter groups** for the filter row: `complete` (every eligible task done,
  * and no sprint card in a gate state or Needs you), `future` (no task done,
@@ -79,6 +84,11 @@ export type SprintState =
   | 'verifying'
   | 'wave-testing'
   | 'doc-syncing'
+  | 're-implementing'
+  | 're-verifying'
+  | 're-wave-testing'
+  | 'verify-failed'
+  | 'wave-test-failed'
   | 'complete'
   | 'waiting'
   | 'not-started'
@@ -91,12 +101,46 @@ export const SPRINT_STATE_TEXT: Record<SprintState, string> = {
   verifying: 'Verifying',
   'wave-testing': 'Wave testing',
   'doc-syncing': 'Doc syncing',
+  're-implementing': 'Re-implementing',
+  're-verifying': 'Re-verifying',
+  're-wave-testing': 'Wave retesting',
+  'verify-failed': 'Verify failed',
+  'wave-test-failed': 'Wave test failed',
   complete: 'Complete',
   waiting: 'Waiting',
   'not-started': 'Not started',
   'needs-you': 'Needs you',
   manual: 'Needs you',
 };
+
+/** Card states where a gate is running (or about to, for a retry): the running (blue) look. */
+const GATE_STATES: ReadonlySet<SprintState> = new Set<SprintState>([
+  'implementing',
+  'verifying',
+  'wave-testing',
+  'doc-syncing',
+  're-implementing',
+  're-verifying',
+  're-wave-testing',
+]);
+
+/** Card states after a failed verify or wave test with retries left: the failed (red) look. */
+const FAILED_STATES: ReadonlySet<SprintState> = new Set<SprintState>(['verify-failed', 'wave-test-failed']);
+
+/** Whether a card state is one of the gate (running) states. */
+export function isGateState(state: SprintState): boolean {
+  return GATE_STATES.has(state);
+}
+
+/** Whether a card state is a failed gate the run will retry. */
+export function isFailedState(state: SprintState): boolean {
+  return FAILED_STATES.has(state);
+}
+
+/** A gate is running, or failed and about to be retried: the sprint's run is still going. */
+export function isActiveState(state: SprintState): boolean {
+  return GATE_STATES.has(state) || FAILED_STATES.has(state);
+}
 
 /** One entry of a sprint's Run notes. */
 export interface RunNote {
@@ -141,6 +185,15 @@ export interface RailSprint {
   run: SprintRun | null;
   /** See {@link RunNote}. Its length is the collapsed Run notes row's count. */
   runNotes: RunNote[];
+  /** The failure being retried, shown under the open card's tasks. See {@link currentFailure}. */
+  failure: CurrentFailure | null;
+}
+
+/** The failed attempt a sprint is retrying, with where the retry has got to. */
+export interface CurrentFailure {
+  note: RunNote;
+  /** "Retry next · 2 attempts left", "Retrying with the failure attached", "Verifying the retry". */
+  statusText: string;
 }
 
 /** Which kind of rail row. See the module comment. */
@@ -350,11 +403,27 @@ export function lastDocSyncPass(wave: WaveRun): string | null {
   return null;
 }
 
-/** Extra implement attempts across the wave's sprints (steps leave out start markers). */
+/**
+ * Extra implementation runs across the wave's sprints. Each `start` marker
+ * begins a run, and so does an `implement` result with no start before it (a
+ * log from before start markers); a result after a start closes that run. So
+ * a retry counts as soon as it starts, and never twice.
+ */
 export function waveRetries(wave: WaveRun): number {
   let n = 0;
   for (const sr of wave.sprints) {
-    const runsOfImplement = sr.steps.filter((s) => s.gate === 'implement').length;
+    let runsOfImplement = 0;
+    let open = false;
+    for (const e of sr.events) {
+      if (e.gate !== 'implement') continue;
+      if (isStartMarker(e)) {
+        runsOfImplement++;
+        open = true;
+      } else {
+        if (!open) runsOfImplement++;
+        open = false;
+      }
+    }
     if (runsOfImplement > 1) n += runsOfImplement - 1;
   }
   return n;
@@ -384,7 +453,8 @@ export function waveDurationText(
 function railSprint(project: Project, sprint: Sprint, runs: PhaseRuns | null): RailSprint {
   const progress = project.progress.bySprint[sprint.id] ?? ZERO;
   const run = currentSprintRun(runs, sprint.id);
-  const state = cardState(sprint, progress, run, sprintRan(runs, sprint.id));
+  const state = cardState(sprint, progress, run, sprintRan(runs, sprint.id), runs);
+  const notes = runNotes(runs, sprint.id);
   return {
     id: sprint.id,
     title: sprint.title,
@@ -394,8 +464,43 @@ function railSprint(project: Project, sprint: Sprint, runs: PhaseRuns | null): R
     stateText: SPRINT_STATE_TEXT[state],
     progress,
     run,
-    runNotes: runNotes(runs, sprint.id),
+    runNotes: notes,
+    failure: currentFailure(state, run, notes),
   };
+}
+
+/** Where a retry has got to, under the failure it's fixing. */
+const RETRY_STATUS: Partial<Record<SprintState, string>> = {
+  're-implementing': 'Retrying with the failure attached',
+  're-verifying': 'Verifying the retry',
+  're-wave-testing': 'Wave testing the retry',
+};
+
+/**
+ * The failure a sprint is retrying: the latest failed verify or wave test in
+ * its current wave that no later run of the same gate has passed, while the
+ * card is in a gate or failed state. `null` otherwise (never failed, fixed,
+ * or escalated, which the escalation banner shows instead).
+ */
+export function currentFailure(state: SprintState, run: SprintRun | null, notes: readonly RunNote[]): CurrentFailure | null {
+  if (!run || !isActiveState(state)) return null;
+  const note = [...notes]
+    .reverse()
+    .find(
+      (n) =>
+        n.kind === 'failed' &&
+        (n.gate === 'verify' || n.gate === 'wave_test') &&
+        n.run === run.run &&
+        n.wave === run.wave &&
+        n.resolution === null,
+    );
+  if (!note) return null;
+  if (isFailedState(state)) {
+    const max = run.steps.find((s) => s.line === note.line)?.max ?? 0;
+    const left = max - note.attempt;
+    return { note, statusText: max > 0 && left > 0 ? `Retry next · ${plural(left, 'attempt')} left` : 'Retry next' };
+  }
+  return { note, statusText: RETRY_STATUS[state] ?? '' };
 }
 
 const RUNNING: Record<SprintRunState, SprintState | null> = {
@@ -407,22 +512,33 @@ const RUNNING: Record<SprintRunState, SprintState | null> = {
   failed: null,
 };
 
+/** The retry word of a gate state whose gate already ran in the sprint's wave. Doc sync runs once. */
+const RETRYING: Partial<Record<SprintState, { state: SprintState; gate: RunGate }>> = {
+  implementing: { state: 're-implementing', gate: 'implement' },
+  verifying: { state: 're-verifying', gate: 'verify' },
+  'wave-testing': { state: 're-wave-testing', gate: 'wave_test' },
+};
+
 /**
  * A sprint card's state from its task counts and its run in the phase's latest
  * run. See the module comment.
  *
  * @param ran Whether the run log has events for the sprint in any run;
  *   defaults to whether `run` is set.
+ * @param runs The phase's run log, to tell when a sibling in the sprint's
+ *   wave holds it (see {@link heldByWave}). Without it, a sprint is never held.
  */
 export function cardState(
   sprint: Sprint,
   progress: Progress | undefined,
   run: SprintRun | null,
   ran: boolean = run !== null,
+  runs: PhaseRuns | null = null,
 ): SprintState {
   const status = sprintStatus(sprint, progress, run, ran);
   if (status === 'needs') return 'needs-you';
   if (status === 'manual') return 'manual';
+  if (heldByWave(runs, run)) return 'waiting';
   const gate = runningGate(run);
   if (gate !== null) return gate;
   if (status === 'complete') return 'complete';
@@ -437,18 +553,117 @@ export function sprintCardState(project: Project, sprint: Sprint): SprintState {
     project.progress.bySprint[sprint.id],
     currentSprintRun(runs, sprint.id),
     sprintRan(runs, sprint.id),
+    runs,
   );
 }
 
-/** The state word of the sprint's derived next gate, or `null` when no gate is next. */
+// ---------------------------------------------------------------------------
+// Run end
+// ---------------------------------------------------------------------------
+
+/** The line under the last wave once the phase's run has ended. See {@link runEnd}. */
+export interface RunEnd {
+  /** `pass` (green): nothing needs you. `needs` (pink): a blocked task or an escalation. `manual` (violet): only manual tasks. */
+  kind: 'pass' | 'needs' | 'manual';
+  /** "Phase run complete", or "Run paused" when sprints are left but something needs you. */
+  title: string;
+  /** "1 task needs your attention", or `null` when nothing does. */
+  attentionText: string | null;
+  /** One line per thing that needs you: "Sprint 2.5 · task 3 blocked". */
+  items: string[];
+}
+
+/**
+ * How the phase's run ended, once it has: the phase has a run log, every
+ * logged wave is done and no sprint is in a gate state. "Phase run complete"
+ * when every sprint is Complete or Needs you; "Run paused" when sprints are
+ * left and something needs you; otherwise (a run stopped with nothing to do
+ * for you) `null`. What needs you: blocked tasks, open escalations, and
+ * manual tasks left in sprints that have started.
+ */
+export function runEnd(view: RailView): RunEnd | null {
+  if (!view.hasRunLog) return null;
+  const waves = view.rows.filter((r) => r.kind === 'wave');
+  if (waves.length === 0 || waves.some((r) => r.state !== 'done')) return null;
+  const sprints = view.rows.flatMap((r) => r.sprints);
+  if (sprints.some((s) => isActiveState(s.state))) return null;
+
+  const items: string[] = [];
+  let tasks = 0;
+  let escalations = 0;
+  let needs = false;
+  for (const s of sprints) {
+    if (s.run?.escalation) {
+      items.push(`Sprint ${s.id} · ${GATE_NAMES[s.run.escalation.gate]} retry limit reached`);
+      escalations++;
+      needs = true;
+    }
+    for (const t of s.sprint.tasks) {
+      const n = t.number === null ? '' : ` ${t.number}`;
+      if (t.status === 'blocked') {
+        items.push(`Sprint ${s.id} · task${n} blocked`);
+        tasks++;
+        needs = true;
+      } else if (t.status === 'manual' && (s.state === 'manual' || s.state === 'needs-you')) {
+        items.push(`Sprint ${s.id} · task${n} is yours to do`);
+        tasks++;
+      }
+    }
+  }
+
+  const finished = sprints.every((s) => s.state === 'complete' || s.state === 'needs-you' || s.state === 'manual');
+  if (!finished && items.length === 0) return null;
+  const n = tasks + escalations;
+  const noun = escalations === 0 ? 'task' : tasks === 0 ? 'escalation' : 'item';
+  return {
+    kind: needs ? 'needs' : items.length > 0 ? 'manual' : 'pass',
+    title: finished ? 'Phase run complete' : 'Run paused',
+    attentionText: n === 0 ? null : `${plural(n, noun)} ${n === 1 ? 'needs' : 'need'} your attention`,
+    items,
+  };
+}
+
+/** How far through a wave's gates each run state is. Implement comes before verify, then wave test, then doc sync. */
+const GATE_ORDER: Record<SprintRunState, number> = {
+  implementing: 0,
+  failed: 0,
+  verifying: 1,
+  testing: 2,
+  syncing: 3,
+  done: 4,
+};
+
+/**
+ * Whether the sprint is held by its wave: it passed verify (or the wave
+ * test), but the next gate runs once for the whole wave, and a sibling in the
+ * same wave hasn't reached it yet, typically one retrying after a failed
+ * verify. The card then reads Waiting, not the gate it's waiting for.
+ */
+export function heldByWave(runs: PhaseRuns | null, run: SprintRun | null): boolean {
+  if (!runs || !run || run.escalation || (run.state !== 'testing' && run.state !== 'syncing')) return false;
+  const wave = runs.waves.find((w) => w.run === run.run && w.wave === run.wave);
+  return wave?.sprints.some((s) => s.sprint !== run.sprint && GATE_ORDER[s.state] < GATE_ORDER[run.state]) ?? false;
+}
+
+/**
+ * The state word of the sprint's derived next gate, or `null` when no gate is
+ * next. A failed verify or wave test with retries left reads Verify failed or
+ * Wave test failed until the retry's start line; a gate that already ran in
+ * the wave reads as its retry (Re-implementing, Re-verifying, Wave retesting).
+ */
 function runningGate(run: SprintRun | null): SprintState | null {
   if (!run || run.escalation) return null;
   if (run.state === 'failed') {
-    // A failed verify or wave test with retries left: the implementer runs again.
     const last = run.steps[run.steps.length - 1];
-    return last && (last.gate === 'verify' || last.gate === 'wave_test') ? 'implementing' : null;
+    if (last?.gate === 'verify') return 'verify-failed';
+    if (last?.gate === 'wave_test') return 'wave-test-failed';
+    return null;
   }
-  return RUNNING[run.state];
+  const gate = RUNNING[run.state];
+  if (gate === null) return null;
+  // Steps leave out start markers, so an implement step here is an earlier, finished run.
+  const retry = RETRYING[gate];
+  return retry && run.steps.some((s) => s.gate === retry.gate) ? retry.state : gate;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,22 +714,17 @@ export function runNotes(runs: PhaseRuns | null, sprintId: string): RunNote[] {
 // Filter groups
 // ---------------------------------------------------------------------------
 
-/** Card states that keep a phase in progress however many tasks are done. */
-const BUSY: ReadonlySet<SprintState> = new Set<SprintState>([
-  'implementing',
-  'verifying',
-  'wave-testing',
-  'doc-syncing',
-  'needs-you',
-  'manual',
-]);
+/** Card states that keep a phase in progress however many tasks are done: the active ones and Needs you. */
+function isBusy(state: SprintState): boolean {
+  return isActiveState(state) || state === 'needs-you' || state === 'manual';
+}
 
 /** Which filter a phase falls under. See the module comment. */
 export function phaseGroup(project: Project, phase: Phase): PhaseGroup {
   const progress = project.progress.byPhase[String(phase.number)];
   const runs = phaseRuns(project, phase.number);
   // Card states, not `sprintStatus`: a complete sprint whose gate is running again is busy.
-  const busy = phase.sprints.some((s) => BUSY.has(sprintCardState(project, s)));
+  const busy = phase.sprints.some((s) => isBusy(sprintCardState(project, s)));
   const complete = progress !== undefined && progress.eligible > 0 && progress.done === progress.eligible;
   if (complete && !busy) return 'complete';
   const started = hasWork(progress) || (runs !== null && runs.events.length > 0);

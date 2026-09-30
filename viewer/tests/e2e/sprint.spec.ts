@@ -99,10 +99,12 @@ test.describe('the rail in the list view', () => {
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Phase 2: Library UI');
     await expect(page.getByTestId('phase-progress-text')).toHaveText('1/8 tasks');
-    // The phase's status bar: the sprint bar over every task in the phase.
+    // The phase's status bar: the sprint bar over every task in the phase. To-do tasks in
+    // sprints already under way ("to do", amber) come before those in sprints not started.
     const phaseBar = page.getByTestId('phase-status-bar');
     await expect(phaseBar).toHaveClass(/started/);
-    await expect(phaseBar).toHaveAttribute('aria-label', /^1 complete, 1 running, 1 blocked, \d+ not started/);
+    await expect(phaseBar).toHaveAttribute('aria-label', /^1 complete, 1 running, 1 blocked, 1 to do, \d+ not started/);
+    await expect(phaseBar.locator('i[data-status="future"]')).toHaveCount(1);
     await expect(phaseBar.locator('i').first()).toHaveAttribute('data-status', 'done');
     await expect(page.getByTestId('phase-status')).toHaveText('1 task blocked');
     // No file path under the title.

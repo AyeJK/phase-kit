@@ -100,9 +100,6 @@ code {
 }
 .i.run {
   color: var(--running);
-}
-.i.spin {
-  color: var(--running);
   animation: i-spin 0.9s linear infinite;
 }
 @keyframes i-spin {
@@ -112,7 +109,7 @@ code {
 }
 /* A still ring still reads as "in progress". */
 @media (prefers-reduced-motion: reduce) {
-  .i.spin {
+  .i.run {
     animation: none;
   }
 }

@@ -79,6 +79,46 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Under the last wave once the run has ended. */
+.rail-end {
+  margin: 16px 0 0;
+}
+.rail-end > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rail-end-attention {
+  color: var(--text);
+}
+.rail-end ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.rail-end.pass {
+  border-color: color-mix(in srgb, var(--passed) 45%, transparent);
+  background: var(--passed-bg);
+}
+.rail-end.pass strong {
+  color: var(--passed);
+}
+.rail-end.needs {
+  border-color: var(--needs);
+  background: var(--needs-bg);
+}
+.rail-end.needs strong {
+  color: var(--needs);
+}
+.rail-end.manual {
+  border-color: var(--manual);
+  background: var(--manual-bg);
+}
+.rail-end.manual strong {
+  color: var(--manual);
+}
 .rail-banners .banner:last-child {
   margin-bottom: 16px;
 }
@@ -224,9 +264,13 @@
   /* Clear the sticky top bar (or the panel's heading bar) when `#s{id}` lands here. */
   scroll-margin-top: calc(var(--head) + 16px);
 }
+/* A gate running: the border only, no tint. */
 .rail-card.run {
   border-color: var(--running);
-  background: linear-gradient(var(--running-bg), var(--running-bg)), var(--card);
+}
+/* Verify failed, Wave test failed: red until the retry starts. */
+.rail-card.fail {
+  border-color: var(--failed);
 }
 .rail-card.needs {
   border-color: var(--needs);
@@ -345,6 +389,39 @@
 }
 .card-body .none {
   margin: 8px 0 0;
+}
+
+/* The failure being retried, under the tasks table: why it failed (red), then the retry (amber). */
+.card-failure {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.card-failure p {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.card-failure-why {
+  font-size: 13px;
+  color: var(--text-2);
+  background: var(--failed-bg);
+  border-color: var(--failed);
+  overflow-wrap: anywhere;
+}
+.card-failure-why b {
+  font-weight: 600;
+  color: var(--failed);
+}
+.card-failure-why .when {
+  color: var(--text-3);
+}
+.card-failure-next {
+  font: 12px var(--mono);
+  color: var(--accent-text);
+  background: var(--warn-bg);
+  border-color: var(--accent);
 }
 
 /* Collapsed rows under the tasks table: closed by default. */

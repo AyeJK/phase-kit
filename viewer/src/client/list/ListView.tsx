@@ -73,7 +73,7 @@ export function ListView({ project, phase, show }: ListViewProps) {
                       <span className="pi-count">{column.countText}</span>
                     </span>
                     <span className="pi-title">{column.title === '' ? `Phase ${column.number}` : column.title}</span>
-                    <StatusSegments progress={column.progress} />
+                    <StatusSegments progress={column.progress} notStarted={column.notStarted} />
                   </Link>
                 </li>
               );

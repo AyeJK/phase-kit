@@ -4,7 +4,7 @@
  * warning, ending in the state the script promises.
  */
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadProject } from '../../src/core/load.js';
@@ -12,7 +12,13 @@ import {
   buildScript,
   DEFAULT_FIXTURE,
   FRESHNESS_AGE_MS,
+  blockedTasks,
+  fillTasks,
+  paceSteps,
   prepareFixture,
+  prepareReplay,
+  readReplay,
+  readSprintTasks,
   simulateRun,
   startSimulatedProject,
   type PreparedFixture,
@@ -145,6 +151,81 @@ describe('simulateRun', () => {
     expect(lines).toHaveLength(4 + steps[0]!.events.length + steps[1]!.events.length);
     expect(lines.at(-1)).toContain('"ts":"2026-10-01T09:30:00Z"');
     expect(text.endsWith('\n')).toBe(true);
+  });
+
+  it('replay: resets the phase, seeds the steps before startAt, then plays the rest keeping the logged gaps', async () => {
+    const fx = await prepared({ freshness: 'as-is' });
+    const steps = await readReplay(TRAIL_LOG_RUN_LOGS.phase2);
+    expect(steps.map((s) => s.events.length)).toEqual([1, 1, 1, 1]);
+    expect(steps[3]!.markDone).toEqual(['2.1']);
+
+    const phaseFile = path.join(fx.phasesDir, 'Phase-2-Trip-Journal.md');
+    const origin = Date.parse('2026-10-01T09:00:00Z');
+    const rest = await prepareReplay(fx.root, steps, { startAt: '2026-09-28T13:09:00Z', origin });
+    expect(rest).toHaveLength(2);
+    // Seeded before the first step still to play (13:09:48), on the same clock: 5 min 36 s and 4 min 17 s earlier.
+    expect(await times(path.join(fx.runsDir, 'phase-2.jsonl'))).toEqual([origin - 336_000, origin - 257_000]);
+    expect(await readFile(phaseFile, 'utf8')).not.toMatch(/^\| x \|/m);
+
+    const sim = simulateRun({ root: fx.root, steps: rest, speed: 1_000_000, origin, startDelayMs: 0 });
+    await sim.done;
+    const written = await times(path.join(fx.runsDir, 'phase-2.jsonl'));
+    expect(written.map((t) => t - written[0]!)).toEqual((await times(TRAIL_LOG_RUN_LOGS.phase2)).map((t, _, all) => t - all[0]!));
+    expect(written[2]).toBe(origin);
+    const project = await loadProject(fx.root);
+    expect(project.warnings).toEqual([]);
+    expect(project.progress.bySprint['2.1']!.percent).toBe(100);
+    expect(project.progress.bySprint['2.2']!.done).toBe(0);
+  });
+
+  it('replay: fills a sprint task by task while implementing, then doc sync marks the blocked task BLOCKED', async () => {
+    const fx = await prepared({ freshness: 'as-is' });
+    const line = (min: number, gate: string, result: string, summary = '') =>
+      JSON.stringify({ v: 1, ts: `2026-09-28T14:${String(min).padStart(2, '0')}:00Z`, phase: 2, wave: 2, sprint: '2.2', gate, result, attempt: 1, max: gate === 'doc_sync' ? 1 : 3, summary });
+    const file = path.join(fx.root, 'replay.jsonl');
+    await writeFile(
+      file,
+      [
+        line(0, 'implement', 'start'),
+        line(8, 'implement', 'blocked', 'done 1,3; blocked 2 — needs a product call'),
+        line(9, 'verify', 'partial', 'criteria 1/2 met; 1 unverified'),
+        line(10, 'doc_sync', 'pass', '3 tasks updated'),
+      ].join('\n'),
+      'utf8',
+    );
+    expect(blockedTasks('done 1,3; blocked 2 — needs a product call')).toEqual([2]);
+    expect(blockedTasks('done 1,2 — blocked by nothing')).toEqual([]);
+
+    const origin = Date.parse('2026-10-01T09:00:00Z');
+    const logged = await prepareReplay(fx.root, await readReplay(file), { origin, resetLater: true });
+    const steps = await fillTasks(fx.root, logged);
+    // Tasks 1 and 3 fill at 1/3 and 2/3 of the implement gap; task 2 is left for the blocker.
+    expect(steps.map((s) => (s.filler ? `~${s.tasks![0]!.task}` : s.events[0]!.result))).toEqual(['start', '~1', '~3', 'blocked', 'partial', 'pass']);
+    // At 60×: 8 min of implementing is capped at 4 s, the fillers split it; verify and doc sync 1 s each.
+    expect(paceSteps(steps, 60, 4_000).map((w) => Math.round(w))).toEqual([0, 1_333, 2_667, 4_000, 5_000, 6_000]);
+
+    const phaseFile = path.join(fx.phasesDir, 'Phase-2-Trip-Journal.md');
+    const sim = simulateRun({ root: fx.root, steps: steps.slice(0, 3), speed: 1_000_000, origin, startDelayMs: 0 });
+    await sim.done;
+    expect(await readSprintTasks(fx.phasesDir, '2.2')).toEqual([
+      { task: 1, status: '~' },
+      { task: 2, status: '—' },
+      { task: 3, status: '~' },
+    ]);
+    await simulateRun({ root: fx.root, steps: steps.slice(3), speed: 1_000_000, origin, startDelayMs: 0 }).done;
+    expect(await readSprintTasks(fx.phasesDir, '2.2')).toEqual([
+      { task: 1, status: 'x' },
+      { task: 2, status: 'BLOCKED' },
+      { task: 3, status: 'x' },
+    ]);
+    expect(await readFile(phaseFile, 'utf8')).toContain('| BLOCKED | 2 |');
+
+    // resetLater: phase 3 is back to not started with no run log; phase 1 is untouched.
+    const project = await loadProject(fx.root);
+    expect(project.warnings).toEqual([]);
+    expect(project.progress.byPhase['3']!.done).toBe(0);
+    expect(project.runs.map((r) => r.phase)).toEqual([1, 2]);
+    expect(project.progress.byPhase['1']!.percent).toBe(100);
   });
 
   it('none: writes nothing', async () => {

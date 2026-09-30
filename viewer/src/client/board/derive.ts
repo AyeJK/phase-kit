@@ -9,15 +9,16 @@
  *
  * | Column treatment | When |
  * |------------------|------|
- * | Running | A sprint is in a gate state (Implementing, Verifying, Wave testing, Doc syncing) |
+ * | Running | A sprint is in a gate state (Implementing, Verifying, Wave testing, Doc syncing, or a retry of one) or a failed one about to be retried (Verify failed, Wave test failed) |
  * | Not started (dashed) | `phaseGroup` is `future` |
  * | Default | Otherwise. Pink (or manual violet) is never a whole column, only a Needs you tile |
  */
 import type { Phase, Progress, Project } from '../../core/model.js';
-import { defaultPhase, phaseLabel, phaseRuns } from '../data/status.js';
+import { defaultPhase, notStartedTasks, phaseLabel, phaseRuns, type NotStarted } from '../data/status.js';
 import { plural } from '../format.js';
 import { phaseWarnings } from '../states/warnings.js';
 import {
+  isActiveState,
   phaseGroup,
   sprintCardState,
   SPRINT_STATE_TEXT,
@@ -26,22 +27,9 @@ import {
   type SprintState,
 } from '../rail/derive.js';
 
-/** Card states drawn in the running style (a gate is next). */
-const GATE_STATES: ReadonlySet<SprintState> = new Set<SprintState>([
-  'implementing',
-  'verifying',
-  'wave-testing',
-  'doc-syncing',
-]);
-
 /** A stretch phase keeps "(Stretch)" in its title as written in the file. */
 export function isStretch(phase: Pick<Phase, 'title'>): boolean {
   return /\(stretch\)/i.test(phase.title);
-}
-
-/** Whether a sprint state is one of the gate (running) states. */
-export function isGateState(state: SprintState): boolean {
-  return GATE_STATES.has(state);
 }
 
 /** One sprint tile in a kanban column. */
@@ -51,7 +39,7 @@ export interface KanbanTile {
   state: SprintState;
   /** "Implementing", "Complete", … (sentence case). */
   stateText: string;
-  /** In a gate state: the running border and a visible state badge. */
+  /** In a gate state, or a failed gate about to be retried: a visible state badge (and the running or failed border). */
   running: boolean;
 }
 
@@ -71,6 +59,8 @@ export interface KanbanColumn {
   countText: string;
   /** The phase's task counts, for its status bar. */
   progress: Progress | undefined;
+  /** To-do and manual tasks in sprints that haven't started: the bar's grey "not started" part. */
+  notStarted: NotStarted;
   /** Parse warnings on the phase file and its run log. */
   warnings: number;
   stretch: boolean;
@@ -84,7 +74,7 @@ export function kanbanColumn(project: Project, phase: Phase): KanbanColumn {
   const eligible = progress?.eligible ?? 0;
   const tiles = phase.sprints.map((sprint): KanbanTile => {
     const state = sprintCardState(project, sprint);
-    return { id: sprint.id, title: sprint.title, state, stateText: SPRINT_STATE_TEXT[state], running: GATE_STATES.has(state) };
+    return { id: sprint.id, title: sprint.title, state, stateText: SPRINT_STATE_TEXT[state], running: isActiveState(state) };
   });
   return {
     number: phase.number,
@@ -96,6 +86,7 @@ export function kanbanColumn(project: Project, phase: Phase): KanbanColumn {
     eligible,
     countText: `${done}/${plural(eligible, 'task')}`,
     progress,
+    notStarted: notStartedTasks(project, phase),
     warnings: phaseWarnings(project.warnings, phase.file, phaseRuns(project, phase.number)?.file ?? null),
     stretch: isStretch(phase),
     tiles,
@@ -121,7 +112,7 @@ export const EMPTY_FILTER_TEXT: Record<PhaseGroup, string> = {
 
 /** The first phase with a sprint in a gate state, or `null`. */
 export function runningPhase(project: Project): number | null {
-  const phase = project.phases.find((p) => p.sprints.some((s) => GATE_STATES.has(sprintCardState(project, s))));
+  const phase = project.phases.find((p) => p.sprints.some((s) => isActiveState(sprintCardState(project, s))));
   return phase?.number ?? null;
 }
 

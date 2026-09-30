@@ -25,6 +25,7 @@ import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { formatTs } from '../../scripts/simulate-run.js';
 import { impliedPhase } from '../../src/client/board/derive.js';
+import { notStartedTasks } from '../../src/client/data/status.js';
 import { PHASE_FILTERS, phaseGroup, phaseGroupCounts, sprintCardState } from '../../src/client/rail/derive.js';
 import { loadProject } from '../../src/core/load.js';
 import type { Project } from '../../src/core/model.js';
@@ -248,8 +249,17 @@ test.describe('multi-phase fixture', () => {
 
       const col = column(page, want.phase);
       await expect(col.getByTestId('kan-count')).toHaveText(want.count);
-      // Status bar: one segment per status the model counts, sized by that count.
-      const counted = Object.entries(model.byStatus).filter(([, n]) => n > 0);
+      // Status bar: one segment per status the model counts, sized by that count. To-do and
+      // manual tasks in sprints not started are grey: `future` on a started bar, else `todo`.
+      const started = model.done + model.byStatus.active > 0;
+      const phase = project.phases.find((p) => p.number === want.phase)!;
+      const quiet = notStartedTasks(project, phase);
+      const qt = Math.min(quiet.todo, model.byStatus.todo);
+      const qm = Math.min(quiet.manual, model.byStatus.manual);
+      const segments = started
+        ? { ...model.byStatus, todo: model.byStatus.todo - qt, manual: model.byStatus.manual - qm, future: qt + qm }
+        : { ...model.byStatus, todo: model.byStatus.todo + qm, manual: model.byStatus.manual - qm, future: 0 };
+      const counted = Object.entries(segments).filter(([, n]) => n > 0);
       const bar = col.getByTestId('phase-status-bar');
       await expect(bar.locator('i')).toHaveCount(counted.length);
       for (const [status, n] of counted) {

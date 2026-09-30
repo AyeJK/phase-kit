@@ -3,19 +3,38 @@
  * Play a phase-builder run against a throwaway copy of a fixture project, so
  * the viewer has something live to show without running phase-builder.
  *
- *     tsx scripts/simulate-run.ts [--fixture trail-log] [--script retry|escalation|none]
+ *     tsx scripts/simulate-run.ts [--fixture trail-log | --from <project>] [--script retry|escalation|none]
  *                                 [--interval 2000] [--stale | --as-is] [--out <folder>] [--keep]
+ *     tsx scripts/simulate-run.ts --replay <run-log.jsonl> [--start-at <ts>] [--speed 30] [--max-gap 4000]
+ *                                 [--reset-later] [--fill-tasks] [--fixture trail-log | --from <project>] ...
  *
  * 1. {@link prepareFixture} copies `test/fixtures/{fixture}/` into a temp
  *    folder (`{tmp}/phase-viewer-sim-XXXX/{fixture}/`, so the project folder
  *    keeps the fixture's name) and, unless `freshness` is `as-is`, shifts
  *    every `ts` in its run logs so the latest event is recent (`fresh`, 90 s
  *    ago) or old (`stale`, 3 h ago). Relative gaps between events are kept.
+ *    With `--from`, it copies that project's `docs/` instead, into a folder
+ *    named after the project.
  * 2. {@link simulateRun} appends a scripted sequence of run-log v1 events
  *    (see `plugin/skills/phase-builder/run-log.md`) at a fixed interval, each
  *    stamped with the current time, the way the gate agents would. When a
  *    step is a doc-sync, it first marks that sprint's tasks done in the phase
  *    file, as phase-doc-sync does.
+ *
+ * Replay (`--replay`) plays a run log file instead of a named script: a real
+ * one, or one written by hand. Lines with the same `ts` are one step, the way
+ * one gate's chained appends land together. {@link prepareReplay} first
+ * resets the copy to before that run: every phase in the file loses its run
+ * log, and every sprint in it has its done and active tasks set back to `—`.
+ * Steps before `--start-at` are written straight away, so the run opens
+ * part-way through. With `--speed`, the wait between steps is the logged gap
+ * divided by the speed (at most `--max-gap`), and each `ts` keeps the logged
+ * gaps, so wave durations read as they were logged. Without it, steps play at
+ * `--interval` and are stamped with the current time. A doc-sync step marks
+ * the sprint's tasks done, and the ones its implement line lists as blocked
+ * `BLOCKED`. `--reset-later` also resets every later phase to not started.
+ * `--fill-tasks` turns each sprint's tasks active (`~`) one by one while it's
+ * implemented, so its progress bar fills before doc sync marks them done.
  *
  * Scripts (written for the `trail-log` fixture, phase 2):
  *
@@ -68,7 +87,7 @@ export interface ScriptEvent {
   wave: number;
   sprint: string;
   gate: 'implement' | 'verify' | 'wave_test' | 'doc_sync';
-  result: 'pass' | 'partial' | 'warn' | 'fail' | 'blocked';
+  result: 'pass' | 'partial' | 'warn' | 'fail' | 'blocked' | 'start';
   attempt: number;
   max: number;
   summary: string;
@@ -81,6 +100,23 @@ export interface ScriptStep {
   events: ScriptEvent[];
   /** Sprint ids whose `—` / `~` tasks are marked `x` in the phase file before the events are appended. */
   markDone?: string[];
+  /** Single task status changes, applied after `markDone`. */
+  tasks?: TaskChange[];
+  /** Replayed steps only: the logged `ts`, in ms. */
+  at?: number;
+  /**
+   * A step added between logged steps (see {@link fillTasks}). With `speed`
+   * it's placed by `at` inside the wait between the logged steps around it,
+   * so it never lengthens the run.
+   */
+  filler?: boolean;
+}
+
+/** Set task `task` of sprint `sprint` to `status` (`~`, `BLOCKED`, …) in its phase file. */
+export interface TaskChange {
+  sprint: string;
+  task: number;
+  status: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +224,10 @@ export function buildScript(name: ScriptName): ScriptStep[] {
 
 /** Options for {@link prepareFixture}. */
 export interface PrepareOptions {
-  /** Folder name under `test/fixtures/`. Default {@link DEFAULT_FIXTURE}. */
+  /** Folder name under `test/fixtures/`. Default {@link DEFAULT_FIXTURE}. Ignored when `source` is given. */
   fixture?: string;
+  /** A project folder to copy instead of a fixture. Only its `docs/` is copied. */
+  source?: string;
   /**
    * Folder to copy into; the project lands at `{dir}/{fixture}` and must not
    * exist yet. Default: a new `phase-viewer-sim-*` folder in the OS temp folder.
@@ -209,7 +247,7 @@ export interface PreparedFixture {
   phasesDir: string;
   /** Absolute `{root}/docs/phases/.runs`. */
   runsDir: string;
-  /** The project folder's name (the fixture name), which the viewer shows as the project name. */
+  /** The project folder's name (the fixture's, or the source project's), which the viewer shows as the project name. */
   name: string;
   /** Delete the copy (and the temp folder when this call created it). Safe to call twice. */
   cleanup(): Promise<void>;
@@ -217,10 +255,10 @@ export interface PreparedFixture {
 
 /** Copy a fixture project to a throwaway folder and set its run-log freshness. */
 export async function prepareFixture(options: PrepareOptions = {}): Promise<PreparedFixture> {
-  const name = options.fixture ?? DEFAULT_FIXTURE;
-  const source = path.join(FIXTURES_ROOT, name);
+  const source = options.source === undefined ? path.join(FIXTURES_ROOT, options.fixture ?? DEFAULT_FIXTURE) : path.resolve(options.source);
+  const name = path.basename(source);
   if (!(await isDirectory(path.join(source, 'docs', 'phases')))) {
-    throw new Error(`No fixture project at ${source} (expected docs/phases/ inside it)`);
+    throw new Error(`No ${options.source === undefined ? 'fixture ' : ''}project at ${source} (expected docs/phases/ inside it)`);
   }
 
   let owned: string;
@@ -234,7 +272,8 @@ export async function prepareFixture(options: PrepareOptions = {}): Promise<Prep
     if (await exists(root)) throw new Error(`${root} already exists; remove it or pick another --out folder`);
     owned = root;
   }
-  await cp(source, root, { recursive: true });
+  if (options.source === undefined) await cp(source, root, { recursive: true });
+  else await cp(path.join(source, 'docs'), path.join(root, 'docs'), { recursive: true });
 
   const phasesDir = path.join(root, 'docs', 'phases');
   const runsDir = path.join(phasesDir, '.runs');
@@ -328,15 +367,27 @@ export interface SimulateOptions {
   script?: ScriptName;
   /** Explicit steps instead of a named script. */
   steps?: ScriptStep[];
-  /** Time between steps. Default {@link DEFAULT_INTERVAL_MS}. */
+  /** Time between steps. Default {@link DEFAULT_INTERVAL_MS}. Ignored when the steps are paced by `speed`. */
   intervalMs?: number;
   /** Time before the first step. Default `intervalMs`. */
   startDelayMs?: number;
+  /**
+   * Replayed steps (every step has `at`) only: wait the logged gap divided by
+   * this between steps, and stamp each step `origin + (at - first at)`.
+   */
+  speed?: number;
+  /** With `speed`: the longest wait between two steps. Default {@link DEFAULT_MAX_GAP_MS}. */
+  maxGapMs?: number;
+  /** With `speed`: the `ts` of the first step, in ms. Default the clock when the first step is written. */
+  origin?: number;
   /** Called after each step is written, with its 0-based index. */
   onStep?: (step: ScriptStep, index: number) => void;
   /** The clock used for `ts`. Default `() => new Date()`. */
   now?: () => Date;
 }
+
+/** Default longest wait between two paced steps. */
+export const DEFAULT_MAX_GAP_MS = 4_000;
 
 /** A running simulation. */
 export interface Simulation {
@@ -344,14 +395,41 @@ export interface Simulation {
   readonly done: Promise<void>;
   /** Stop before the next step. Safe to call twice. */
   stop(): void;
+  /**
+   * The run's clock now, in ms: the time the run log is being written at. With
+   * `speed`, it runs `speed` times faster than the wall clock between steps
+   * (so a browser can be shown the same time as the log), and at normal speed
+   * before the first step and after the last. Otherwise it's the clock.
+   */
+  clock(): number;
 }
 
-/** Append a script's steps to the project's run logs, one step per interval. */
+/** Append a script's steps to the project's run logs, one step per interval (or per logged gap, with `speed`). */
 export function simulateRun(options: SimulateOptions): Simulation {
   const steps = options.steps ?? buildScript(options.script ?? 'retry');
   const interval = Math.max(0, options.intervalMs ?? DEFAULT_INTERVAL_MS);
   const startDelay = Math.max(0, options.startDelayMs ?? interval);
   const now = options.now ?? (() => new Date());
+  const speed = options.speed !== undefined && options.speed > 0 && steps.every((s) => s.at !== undefined) ? options.speed : null;
+  const maxGap = Math.max(0, options.maxGapMs ?? DEFAULT_MAX_GAP_MS);
+  /** With speed: each step's wall time after the first step's. */
+  const wallAt = speed === null ? [] : paceSteps(steps, speed, maxGap);
+
+  /** Wait before step `i` (i ≥ 1). */
+  const gapBefore = (i: number): number => (speed === null ? interval : wallAt[i]! - wallAt[i - 1]!);
+
+  // With speed: ts of step i is origin + (at_i - at_0). `origin` is fixed on the first step when not given.
+  let origin = options.origin ?? null;
+  const expectedFirst = now().getTime() + (steps.length > 0 ? startDelay : 0);
+  /** Wall time of the first step, and index of the last step written, for {@link Simulation.clock}. */
+  let firstWall: number | null = null;
+  let last: { index: number } | null = null;
+
+  const stampFor = (index: number, wall: number): number => {
+    if (speed === null) return wall;
+    origin ??= wall;
+    return origin + (steps[index]!.at! - steps[0]!.at!);
+  };
 
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
@@ -363,15 +441,19 @@ export function simulateRun(options: SimulateOptions): Simulation {
     const tick = async (): Promise<void> => {
       if (stopped || index >= steps.length) return resolve();
       const step = steps[index]!;
+      const wall = now().getTime();
+      firstWall ??= wall;
+      const stamp = stampFor(index, wall);
       try {
-        await writeStep(options.root, step, now());
+        await writeStep(options.root, step, new Date(stamp));
       } catch (err) {
         return reject(err instanceof Error ? err : new Error(String(err)));
       }
+      last = { index };
       options.onStep?.(step, index);
       index++;
       if (stopped || index >= steps.length) return resolve();
-      timer = setTimeout(() => void tick(), interval);
+      timer = setTimeout(() => void tick(), gapBefore(index));
     };
     if (steps.length === 0) resolve();
     else timer = setTimeout(() => void tick(), startDelay);
@@ -384,13 +466,182 @@ export function simulateRun(options: SimulateOptions): Simulation {
       clearTimeout(timer);
       finish();
     },
+    clock() {
+      const wall = now().getTime();
+      if (speed === null) return wall;
+      if (last === null || firstWall === null || origin === null) return (origin ?? expectedFirst) - (expectedFirst - wall);
+      // Between two steps, run time moves in step with the wall clock from one to the next.
+      const runAt = (i: number): number => origin! + (steps[i]!.at! - steps[0]!.at!);
+      const t = wall - firstWall;
+      const k = last.index;
+      if (k === steps.length - 1) return runAt(k) + Math.max(0, t - wallAt[k]!);
+      const span = wallAt[k + 1]! - wallAt[k]!;
+      const f = span <= 0 ? 1 : Math.min(1, Math.max(0, (t - wallAt[k]!) / span));
+      return runAt(k) + f * (runAt(k + 1) - runAt(k));
+    },
   };
+}
+
+/**
+ * Wall time of each step after the first, with `speed`: a logged step comes
+ * the logged gap divided by `speed` after the previous logged step, at most
+ * `maxGap`. Filler steps sit inside that wait in proportion to their `at`.
+ */
+export function paceSteps(steps: readonly ScriptStep[], speed: number, maxGap: number): number[] {
+  const wall = new Array<number>(steps.length).fill(0);
+  const gap = (a: number, b: number): number => Math.min(maxGap, Math.max(0, (steps[b]!.at! - steps[a]!.at!) / speed));
+  let prev = -1;
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i]!.filler) continue;
+    wall[i] = prev === -1 ? 0 : wall[prev]! + gap(prev, i);
+    for (let j = prev + 1; j < i; j++) {
+      if (prev === -1) continue;
+      const span = steps[i]!.at! - steps[prev]!.at!;
+      const f = span <= 0 ? 1 : (steps[j]!.at! - steps[prev]!.at!) / span;
+      wall[j] = wall[prev]! + f * (wall[i]! - wall[prev]!);
+    }
+    prev = i;
+  }
+  for (let j = prev + 1; j < steps.length; j++) wall[j] = j === 0 ? 0 : wall[j - 1]! + gap(j - 1, j);
+  return wall;
+}
+
+// ---------------------------------------------------------------------------
+// Replay
+// ---------------------------------------------------------------------------
+
+/**
+ * A run log file as steps: consecutive lines with the same `ts` are one step,
+ * `at` is that `ts`, and each passing `doc_sync` marks its sprint done, except
+ * the tasks its latest `implement` result lists as blocked ("done 1,2;
+ * blocked 3 — …"), which it marks `BLOCKED`, as phase-doc-sync does. Blank
+ * lines are skipped; any other line that isn't a v1 event is an error.
+ */
+export async function readReplay(file: string): Promise<ScriptStep[]> {
+  const steps: ScriptStep[] = [];
+  const blockedBySprint = new Map<string, number[]>();
+  const lines = (await readFile(file, 'utf8')).split(/\r?\n/);
+  lines.forEach((line, i) => {
+    if (line.trim() === '') return;
+    let raw: Record<string, unknown>;
+    try {
+      raw = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      throw new Error(`${file}:${i + 1}: not JSON`);
+    }
+    const at = typeof raw.ts === 'string' ? Date.parse(raw.ts) : NaN;
+    if (Number.isNaN(at) || typeof raw.phase !== 'number' || typeof raw.sprint !== 'string' || typeof raw.gate !== 'string') {
+      throw new Error(`${file}:${i + 1}: not a run-log event (needs ts, phase, sprint and gate)`);
+    }
+    const event: ScriptEvent = {
+      phase: raw.phase,
+      wave: Number(raw.wave),
+      sprint: raw.sprint,
+      gate: raw.gate as ScriptEvent['gate'],
+      result: raw.result as ScriptEvent['result'],
+      attempt: Number(raw.attempt),
+      max: Number(raw.max),
+      summary: typeof raw.summary === 'string' ? raw.summary : '',
+      ...(Array.isArray(raw.files) ? { files: raw.files as string[] } : {}),
+    };
+    const prev = steps[steps.length - 1];
+    const step = prev && prev.at === at ? prev : { events: [], at };
+    if (step !== prev) steps.push(step);
+    step.events.push(event);
+    if (event.gate === 'implement' && event.result !== 'start') blockedBySprint.set(event.sprint, blockedTasks(event.summary));
+    if (event.gate === 'doc_sync' && event.result === 'pass') {
+      (step.markDone ??= []).push(event.sprint);
+      for (const task of blockedBySprint.get(event.sprint) ?? []) (step.tasks ??= []).push({ sprint: event.sprint, task, status: 'BLOCKED' });
+    }
+  });
+  return steps;
+}
+
+/** Task numbers an `implement` summary lists as blocked: "done 1,2; blocked 3,4 — notes" → `[3, 4]`. */
+export function blockedTasks(summary: string): number[] {
+  const m = /\bblocked ([\d,\s]+)/.exec(summary.split(' — ')[0] ?? '');
+  return m ? m[1]!.split(',').map((n) => Number(n.trim())).filter((n) => Number.isInteger(n) && n > 0) : [];
+}
+
+/**
+ * Add filler steps so a sprint's progress bar fills while it's implemented:
+ * between each sprint's first `implement` `start` and its `implement` result,
+ * its to-do tasks turn active (`~`) one by one, evenly through the gap, in
+ * task order. Tasks the result lists as blocked are left. Doc sync then marks
+ * them done, as in a real run. Reads task numbers from the project's phase
+ * files as they are now (after {@link prepareReplay}).
+ */
+export async function fillTasks(root: string, steps: ScriptStep[]): Promise<ScriptStep[]> {
+  const phasesDir = path.join(root, 'docs', 'phases');
+  const fillers: ScriptStep[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    for (const start of steps[i]!.events) {
+      if (start.gate !== 'implement' || start.result !== 'start' || start.attempt !== 1) continue;
+      const j = steps.findIndex((s, k) => k > i && s.events.some((e) => e.sprint === start.sprint && e.gate === 'implement' && e.result !== 'start'));
+      if (j === -1) continue;
+      const result = steps[j]!.events.find((e) => e.sprint === start.sprint && e.gate === 'implement')!;
+      const blocked = blockedTasks(result.summary);
+      const todo = (await readSprintTasks(phasesDir, start.sprint)).filter((t) => /^(?:—|–|-)$/.test(t.status) && !blocked.includes(t.task));
+      const from = steps[i]!.at!;
+      const to = steps[j]!.at!;
+      todo.forEach((t, k) => {
+        fillers.push({ events: [], filler: true, at: from + ((k + 1) / (todo.length + 1)) * (to - from), tasks: [{ sprint: start.sprint, task: t.task, status: '~' }] });
+      });
+    }
+  }
+  // Stable: a filler at the same time as a logged step comes after it.
+  return [...steps, ...fillers].sort((a, b) => a.at! - b.at!);
+}
+
+/** Options for {@link prepareReplay}. */
+export interface ReplayOptions {
+  /** Steps logged before this time (any `Date.parse` string) are written at once. Default: none are. */
+  startAt?: string;
+  /** Run time the first step still to play is stamped with, in ms (as {@link SimulateOptions.origin}). */
+  origin: number;
+  /** Also reset every phase numbered above the replayed ones to not started: no run log, done and active tasks back to `—`. */
+  resetLater?: boolean;
+}
+
+/**
+ * Get a project copy ready to replay `steps` (from {@link readReplay}): reset
+ * the phases and sprints the steps touch (see the module comment), then write
+ * the steps logged before `startAt`, stamped on the same clock the rest will
+ * play on. Returns the steps still to play.
+ */
+export async function prepareReplay(root: string, steps: ScriptStep[], options: ReplayOptions): Promise<ScriptStep[]> {
+  const phasesDir = path.join(root, 'docs', 'phases');
+  const events = steps.flatMap((s) => s.events);
+  const phases = new Set(events.map((e) => e.phase));
+  const sprints = new Set(events.map((e) => e.sprint));
+  if (options.resetLater) {
+    const last = Math.max(...phases);
+    for (const name of await readdir(phasesDir)) {
+      const n = /^Phase-(\d+)/i.exec(name);
+      if (!n || Number(n[1]) <= last) continue;
+      phases.add(Number(n[1]));
+      const text = await readFile(path.join(phasesDir, name), 'utf8');
+      for (const m of text.matchAll(/^#\s+Sprint\s+([\d.]+)/gm)) sprints.add(m[1]!);
+    }
+  }
+  for (const phase of phases) await rm(path.join(phasesDir, '.runs', `phase-${phase}.jsonl`), { force: true });
+  for (const sprint of sprints) await markSprintTodo(phasesDir, sprint);
+
+  const startAt = options.startAt === undefined ? -Infinity : Date.parse(options.startAt);
+  if (Number.isNaN(startAt)) throw new Error(`--start-at: can't read "${options.startAt}" as a time`);
+  const split = steps.findIndex((s) => s.at! >= startAt);
+  const seed = split === -1 ? steps : steps.slice(0, split);
+  const rest = split === -1 ? [] : steps.slice(split);
+  const anchor = (rest[0] ?? steps[steps.length - 1])?.at ?? 0;
+  for (const step of seed) await writeStep(root, step, new Date(options.origin + (step.at! - anchor)));
+  return rest;
 }
 
 /** Write one step: phase-file status edits first (as doc-sync does), then the events. */
 export async function writeStep(root: string, step: ScriptStep, at: Date): Promise<void> {
   const phasesDir = path.join(root, 'docs', 'phases');
   for (const sprint of step.markDone ?? []) await markSprintDone(phasesDir, sprint);
+  for (const t of step.tasks ?? []) await setTaskStatus(phasesDir, t.sprint, t.task, t.status);
 
   const ts = formatTs(at);
   const byFile = new Map<string, string[]>();
@@ -429,6 +680,44 @@ export function eventLine(e: ScriptEvent, ts: string): string {
  * becomes `x`. Does nothing when no phase file has the sprint.
  */
 export async function markSprintDone(phasesDir: string, id: string): Promise<void> {
+  await rewriteSprintStatus(phasesDir, id, /^\|\s*(?:—|–|-|~)\s*\|/, '| x |');
+}
+
+/**
+ * Set every done or active task in sprint `id` back to to-do: the Status cell
+ * `x` or `~` becomes `—`. Blocked, manual, cut and deferred tasks are left.
+ */
+export async function markSprintTodo(phasesDir: string, id: string): Promise<void> {
+  await rewriteSprintStatus(phasesDir, id, /^\|\s*(?:x|X|~)\s*\|/, '| — |');
+}
+
+/** Set the Status cell of task `task` in sprint `id` to `status`. */
+export async function setTaskStatus(phasesDir: string, id: string, task: number, status: string): Promise<void> {
+  await rewriteSprintStatus(phasesDir, id, new RegExp(`^\\|[^|]*\\|\\s*${task}\\s*\\|`), `| ${status} | ${task} |`);
+}
+
+/** Sprint `id`'s task rows as `{ task, status }`, in file order; empty when no phase file has it. */
+export async function readSprintTasks(phasesDir: string, id: string): Promise<Array<{ task: number; status: string }>> {
+  const header = new RegExp(`^#\\s+Sprint\\s+${id.replace('.', '\\.')}(?![\\d.])`);
+  for (const name of await readdir(phasesDir)) {
+    if (!/^Phase-\d+.*\.md$/i.test(name)) continue;
+    const lines = (await readFile(path.join(phasesDir, name), 'utf8')).split('\n');
+    const start = lines.findIndex((l) => header.test(l));
+    if (start === -1) continue;
+    const rows: Array<{ task: number; status: string }> = [];
+    for (let i = start + 1; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (/^#\s+Sprint\b/.test(line) || /^##\s/.test(line)) break;
+      const m = /^\|\s*([^|]*?)\s*\|\s*(\d+)\s*\|/.exec(line);
+      if (m) rows.push({ status: m[1]!, task: Number(m[2]) });
+    }
+    return rows;
+  }
+  return [];
+}
+
+/** Replace `from` with `to` on the task rows of sprint `id`, in whichever phase file holds it. */
+async function rewriteSprintStatus(phasesDir: string, id: string, from: RegExp, to: string): Promise<void> {
   const header = new RegExp(`^#\\s+Sprint\\s+${id.replace('.', '\\.')}(?![\\d.])`);
   for (const name of await readdir(phasesDir)) {
     if (!/^Phase-\d+.*\.md$/i.test(name)) continue;
@@ -441,7 +730,7 @@ export async function markSprintDone(phasesDir: string, id: string): Promise<voi
     for (let i = start + 1; i < lines.length; i++) {
       const line = lines[i]!;
       if (/^#\s+Sprint\b/.test(line) || /^##\s/.test(line)) break;
-      const next = line.replace(/^\|\s*(?:—|–|-|~)\s*\|/, '| x |');
+      const next = line.replace(from, to);
       if (next !== line) {
         lines[i] = next;
         changed = true;
@@ -464,12 +753,39 @@ export interface SimulatedProject {
   close(): Promise<void>;
 }
 
-/** {@link prepareFixture}, then {@link simulateRun} on the copy. */
-export async function startSimulatedProject(
-  options: PrepareOptions & Omit<SimulateOptions, 'root'> = {},
-): Promise<SimulatedProject> {
+/** Options for {@link startSimulatedProject}. */
+export type StartOptions = PrepareOptions &
+  Omit<SimulateOptions, 'root' | 'origin'> & {
+    /** A run log file to replay instead of `script` or `steps`. */
+    replay?: string;
+    /** With `replay`: see {@link ReplayOptions.startAt}. */
+    startAt?: string;
+    /** With `replay`: see {@link ReplayOptions.resetLater}. */
+    resetLater?: boolean;
+    /** With `replay`: fill progress bars as sprints are implemented (see {@link fillTasks}). */
+    fillTasks?: boolean;
+  };
+
+/** {@link prepareFixture}, then {@link simulateRun} on the copy (after {@link prepareReplay}, with `replay`). */
+export async function startSimulatedProject(options: StartOptions = {}): Promise<SimulatedProject> {
   const fixture = await prepareFixture(options);
-  const simulation = simulateRun({ ...options, root: fixture.root });
+  let steps = options.steps;
+  let origin: number | undefined;
+  if (options.replay !== undefined) {
+    try {
+      origin = Date.now() + Math.max(0, options.startDelayMs ?? options.intervalMs ?? DEFAULT_INTERVAL_MS);
+      steps = await prepareReplay(fixture.root, await readReplay(options.replay), {
+        startAt: options.startAt,
+        origin,
+        resetLater: options.resetLater,
+      });
+      if (options.fillTasks) steps = await fillTasks(fixture.root, steps);
+    } catch (err) {
+      await fixture.cleanup();
+      throw err;
+    }
+  }
+  const simulation = simulateRun({ ...options, steps, origin, root: fixture.root });
   return {
     fixture,
     simulation,
@@ -508,6 +824,12 @@ export function parseMs(raw: string | undefined): number | null {
   return Number(raw.trim());
 }
 
+/** Parse `--speed`: a positive number, or `null`. */
+export function parseSpeed(raw: string | undefined): number | null {
+  const n = raw === undefined ? NaN : Number(raw.trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Whether `raw` names a script. */
 export function isScriptName(raw: string): raw is ScriptName {
   return (SCRIPT_NAMES as readonly string[]).includes(raw);
@@ -534,8 +856,15 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       fixture: { type: 'string' },
+      from: { type: 'string' },
       script: { type: 'string' },
       escalate: { type: 'boolean' },
+      replay: { type: 'string' },
+      'start-at': { type: 'string' },
+      speed: { type: 'string' },
+      'max-gap': { type: 'string' },
+      'reset-later': { type: 'boolean' },
+      'fill-tasks': { type: 'boolean' },
       interval: { type: 'string' },
       stale: { type: 'boolean' },
       'as-is': { type: 'boolean' },
@@ -550,22 +879,35 @@ async function main(): Promise<void> {
   if (!isScriptName(script)) throw new Error(`--script must be one of ${SCRIPT_NAMES.join(', ')}`);
   const intervalMs = values.interval === undefined ? DEFAULT_INTERVAL_MS : parseMs(values.interval);
   if (intervalMs === null) throw new Error('--interval must be a whole number of milliseconds');
+  const speed = values.speed === undefined ? undefined : parseSpeed(values.speed);
+  if (speed === null) throw new Error('--speed must be a number above 0');
+  const maxGapMs = values['max-gap'] === undefined ? undefined : parseMs(values['max-gap']);
+  if (maxGapMs === null) throw new Error('--max-gap must be a whole number of milliseconds');
   const freshness: Freshness = values['as-is'] ? 'as-is' : values.stale ? 'stale' : 'fresh';
 
   const sim = await startSimulatedProject({
     fixture: values.fixture,
+    source: values.from,
     dir: values.out,
     freshness,
     script,
+    replay: values.replay,
+    startAt: values['start-at'],
+    resetLater: values['reset-later'],
+    fillTasks: values['fill-tasks'],
+    speed,
+    maxGapMs,
     intervalMs,
     onStep: (step, index) => {
+      if (step.filler) return;
       const what = step.events.map((e) => `${e.sprint} ${e.gate} ${e.result}`).join(', ');
       process.stdout.write(`step ${index + 1}: ${what}\n`);
     },
   });
+  const playing = values.replay === undefined ? `${script} script` : `replay of ${path.basename(values.replay)}`;
   process.stdout.write(
     [
-      `simulate-run: ${script} script on a copy of ${sim.fixture.name}`,
+      `simulate-run: ${playing} on a copy of ${sim.fixture.name}`,
       `project: ${sim.fixture.root}`,
       `view it: npm run serve -- --dir "${sim.fixture.root}"`,
       values.keep ? 'Ctrl+C stops; the copy is kept.' : 'Ctrl+C stops and deletes the copy.',

@@ -23,29 +23,26 @@ Skills load as `phase-runner:phase-planner`, `phase-runner:phase-builder`, and s
 
 ## How it works
 
-| Stage | Skill | What you get |
-|---|---|---|
-| **Idea** | `product-planner` | An HTML product plan: the options considered, how the data flows, and the open questions |
-| **Design** | `design-planner` | A locked design system, per-screen specs and HTML mockups, *before* implementation starts |
-| **Plan** | `phase-planner` | `docs/phases/Phase-*.md` files with sprints, tasks and acceptance criteria |
-| **Build** | `phase-builder` | Sprints grouped into parallel-safe waves, each built by a fresh sub-agent. UI sprints build against your design system |
-| **QA** | Automatic: `phase-builder` runs `phase-verify` + `phase-wave-test` | Build, typecheck and tests, a diff review against every acceptance criterion, and browser checks against your design system |
-| **Sign-off** | You | The run pauses at blockers and phase boundaries. Nothing ships past you |
-
-A failed wave retries the same sprint with the failure attached, up to three times, then escalates to you. Only `phase-doc-sync` writes status back to the phase file, so the plan always matches what actually passed.
-
-## Quickstart
+<p align="center">
+  <img src="docs/planning-artifacts.gif" alt="The four steps as Phase Runner ran them to build phase-viewer, two views each. Step 1, product-planner: the plan document scrolls from its overview of what is being built down to its data flow diagram. Step 2, design-planner: the design system, with its colour palette, type, components and status bars, then an artboard of the viewer's screens in dark, light and mobile. Step 3, phase-planner: a phase file with a sprint's goal, tasks and acceptance criteria, then the list of seven phases, all not started. Step 4, phase-builder: a phase mid-run, with two UI sprints building in parallel in wave 1, each by a fresh sub-agent working from the design system. Wave 1 passes and wave 2 starts: its sprint fails verify on a typecheck error, is re-implemented with the failure attached, fails again on a page that scrolls sideways at 375px, and passes verify and the browser wave test on the third attempt, completing the phase." width="100%">
+</p>
 
 1. **Plan the product.** Starting something new? Tell `product-planner` what you want to build. It turns the idea into a product plan: the options, how the data flows, and the open questions to settle.
-2. **Design it (optional).** Run `design-planner` to lock in a design system and get HTML mockups of every screen before any code is written.
-3. **Break it into phases.** Ask `phase-planner` to turn the product plan into phase plans, split into sprints and tasks, each with acceptance criteria.
+2. **Design it.** Run `design-planner` to lock in a design system and get HTML mockups of every screen before any code is written.
+3. **Break it into phases.** Ask `phase-planner` to turn the product plan, design system and mockups into phase plans, split into sprints and tasks, each with acceptance criteria.
 4. **Build it.** With the docs in place, say something like *"implement phase 1"*. `phase-builder` gets to work, and checks in with you when it hits a blocker or finishes the phase.
 
-## Watch a build live
+Step 4 runs on its own. `phase-builder` groups sprints into parallel-safe waves and gives each sprint a fresh sub-agent, and UI sprints build against your design system. After every wave, `phase-verify` runs your build, typecheck and tests and reviews the diff against every acceptance criterion, and `phase-wave-test` checks UI work in a browser against your design system. A failed wave retries the same sprint with the failure attached, up to three times, then escalates to you. Only `phase-doc-sync` writes status back to the phase file, so the plan always matches what actually passed. Nothing ships past you.
 
-[`phase-viewer`](viewer/) is a local dashboard for a phase run. It shows your phases, sprints and tasks, and every gate result as it lands: which wave is building, which verify failed and why, and the retry that fixed it. It updates as the files change, and it only reads your project, never writes to it.
+## Local dashboard
 
-<!-- Recording of a live run with a verify fail and the retry landing goes here (release asset, Sprint 6.3 task 5). -->
+[`phase-viewer`](viewer/) is a local dashboard for tracking your phases, sprints and tasks. Monitor your phase builds, wave progress, verification failures and anything that needs your attention. It updates as the files change, and it only reads your project, never writes to it.
+
+<p align="center">
+  <img src="docs/phase-viewer-demo.gif" alt="phase-viewer during a phase run. Sprint 2.1 builds on its own, then Sprints 2.2 and 2.3 build in parallel. 2.3 fails verify and retries while 2.2 waits, then both complete. Sprint 2.4 fails verify once and passes on the retry. Sprint 2.5 finishes with one task blocked, and the rail ends with Phase run complete, 1 task needs your attention." width="100%">
+</p>
+
+<sub>A simulated run, replayed from a run log: Phase 2 of this repo's own build, with the failures and the blocker added for the demo.</sub>
 
 In Claude Code, say *"open the viewer"*. The `phase-viewer` skill starts it in the background and gives you the URL. Ask again later and you get the same URL, since only one viewer runs per project.
 
@@ -75,12 +72,32 @@ docs/phases/.runs/
 | **A separate agent reviews the work** | ✅ every wave | ✅ every task | ❌ the implementer checks its own work | 🟡 on demand | 🟡 on demand |
 | **Automatic retry on failure** | ✅ up to 3, then you | ✅ up to 5 rounds | 🟡 you repeat implement → converge | 🟡 on demand | — |
 | **Browser QA on UI work** | ✅ every UI wave | ❌ | ❌ | 🟡 on demand, with a browser MCP | 🟡 generates E2E tests |
+| **Live dashboard of the build** | ✅ [`phase-viewer`](viewer/), in your browser | ❌ a progress file | ❌ third-party TUI only | 🟡 text status in chat | 🟡 text status in chat |
 
 ✅ built into the workflow · 🟡 a command you run · ❌ not included · — not documented
 
 Most of these pieces exist somewhere. Phase Runner is the one where all of them run on their own, on every wave, inside the build loop.
 
-<sub>Checked against each project's README and docs on Sep 27, 2026. Spot something out of date? Open an issue.</sub>
+<sub>Checked against each project's README and docs on Sep 27, 2026, and the dashboard row on Sep 30, 2026. Spot something out of date? Open an issue.</sub>
+
+## Receipts
+
+[`phase-viewer`](viewer/) was built with Phase Runner: 7 phases, 26 sprints. Sprints 1.1 to 1.3 added the run log itself, so the log picks up at 1.4 and covers the other 23. Here's what it recorded:
+
+- **84 gate results** across implement, verify, wave-test and doc-sync
+- **3 verify failures, on 2 sprints.** Both were fixed by automatic retries, with no help needed
+- **5 verify partials.** Nothing failed, but a note went on record and the wave moved on
+- **9 browser wave-tests**, all passed
+- **1 escalation**, where the run stopped and asked for a human
+
+What verify caught:
+
+- **Sprint 4.2.** Attempt 1 failed `npm run check`: the new browser test used `window` and `document`, but the project's TypeScript config has no DOM types. Attempt 2 fixed that, then failed again, because at 375px wide every page scrolled sideways by 168px. Attempt 3 fixed the overflow and passed.
+- **Sprint 5.3.** Attempt 1 failed typecheck: a test imported a chain of files that reached a `.tsx` component, and the root TypeScript build isn't set up for JSX. Attempt 2 moved the shared helper into a plain `.ts` file and passed.
+
+The partials were either criteria that verify couldn't check from the command line, such as ones needing a real plugin install (3 sprints), or all criteria met with a note attached, such as files changed outside the sprint's Module column (2 sprints). The escalation was Sprint 7.5, whose last task needed a plugin install and a live phase run on a real machine.
+
+<sub>Counted from `docs/phases/.runs/` on Sep 29, 2026. Run logs are gitignored, so this section is the published record.</sub>
 
 ## What's in here
 
@@ -91,7 +108,7 @@ These are the five you talk to. Everything else runs on its own.
 | Skill | Job |
 |---|---|
 | `product-planner` | Turns a rough idea into a rich HTML plan doc — options considered, data flow, open questions. Optional first step. |
-| `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. Optional, for UI-heavy projects. |
+| `design-planner` | Locks a visual design system and per-screen specs *before* implementation starts. |
 | `phase-planner` | Creates and edits `docs/phases/Phase-*.md` files — the sprint/task source of truth. |
 | `phase-builder` | The orchestrator. Reads a phase file, groups sprints into parallel-safe waves, spawns implementation sub-agents, and won't advance a wave until it passes verification. |
 | `phase-viewer` | Starts the live dashboard (`npx phase-viewer`) in the background and gives you its URL. Local sessions only. |
@@ -125,7 +142,7 @@ your-project/
 │   │   ├── Phase-1-Foundation.md
 │   │   ├── Phase-2-Core-Feature.md
 │   │   └── ...
-│   └── design/                    (optional — only if you run design-planner)
+│   └── design/                    (written by design-planner)
 │       ├── DESIGN.md
 │       ├── design-system.md
 │       └── screens/

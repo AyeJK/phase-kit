@@ -307,24 +307,40 @@ test.describe('a run in progress', () => {
       expect(await attrs(w2.locator('article[data-sprint-card]'), 'data-sprint-card')).toEqual(['2.2', '2.3']);
       await expect(card(page, '2.3')).toHaveAttribute('data-open', 'true');
 
-      // 2.3's verify fails: the retry reads Implementing (never red); 2.2 goes to its wave test.
+      // 2.3's verify fails: red Verify failed until the retry, with the failure under its tasks;
+      // 2.2 passed, and waits for 2.3, since the wave test runs once for the whole wave.
       await append(1);
-      await expect(badge(page, '2.3')).toHaveText('Implementing', { timeout: APPEAR_MS });
-      await expect(badge(page, '2.2')).toHaveText('Wave testing');
+      await expect(badge(page, '2.3')).toHaveText('Verify failed', { timeout: APPEAR_MS });
+      await expect(badge(page, '2.3')).toHaveClass(/status fail/);
+      // Still working: the running spinner, in red.
+      // Cast: this tsconfig has no DOM types.
+      type Styles = { getComputedStyle(el: unknown): { color: string } };
+      const failedRed = await badge(page, '2.3').evaluate((el) => (globalThis as unknown as Styles).getComputedStyle(el).color);
+      await expect(badge(page, '2.3').locator('svg.i.run')).toHaveCSS('color', failedRed);
+      await expect(card(page, '2.3')).toHaveClass(/\bfail\b/);
+      await expect(badge(page, '2.2')).toHaveText('Waiting');
+      const failure = card(page, '2.3').getByTestId('card-failure');
+      await expect(failure).toContainText('Verify attempt 1 failed. test: 2 failing in src/photos/import.test.ts');
+      await expect(failure.getByTestId('card-failure-next')).toHaveText('Retry next · 2 attempts left');
+      await expect(card(page, '2.2').getByTestId('card-failure')).toHaveCount(0);
       const notes = row(page, '2.3', 'run-notes');
       await expect(notes.getByTestId('card-row-end')).toHaveText('1');
       await expect(notes).not.toHaveAttribute('open');
       await expect(notes.getByTestId('run-note')).toBeHidden();
 
-      // Implement attempt 2: Implementing → Verifying.
+      // Implement attempt 2 (logged without a start line): Verify failed → Re-verifying.
       await append(2);
-      await expect(badge(page, '2.3')).toHaveText('Verifying', { timeout: APPEAR_MS });
+      await expect(badge(page, '2.3')).toHaveText('Re-verifying', { timeout: APPEAR_MS });
+      await expect(badge(page, '2.3')).toHaveClass(/status run/);
+      await expect(failure.getByTestId('card-failure-next')).toHaveText('Verifying the retry');
+      await expect(badge(page, '2.2')).toHaveText('Waiting');
       await expect(w2.getByTestId('wave-retries')).toHaveText('1 retry');
 
       // Verify passes, wave test, doc sync: the wave finishes.
       await append(3);
       // A UI wave: every sprint in it goes through the wave test.
       await expect(badge(page, '2.3')).toHaveText('Wave testing', { timeout: APPEAR_MS });
+      await expect(failure).toHaveCount(0);
       await append(4);
       await expect(badge(page, '2.3')).toHaveText('Doc syncing', { timeout: APPEAR_MS });
       await append(5);

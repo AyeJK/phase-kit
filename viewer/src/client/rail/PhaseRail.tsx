@@ -13,9 +13,12 @@
  * - The "Sprints" line: "2 waves · 1 retry" (or the plain tag "No run log").
  * - One row per rail group from `railView`: the 180px wave cell (name with a
  *   check when done, mode, duration, retries) beside that group's cards.
+ * - Once the run has ended (`runEnd`): "Phase run complete", in green, or
+ *   pink / violet with what needs you ("1 task needs your attention").
  *
- * Cards start collapsed except the running ones (a sprint that starts running
- * later opens as it starts); `#s{id}` opens that card and scrolls to it.
+ * Cards start collapsed except the running ones (a gate running, or a failed
+ * one about to be retried; a sprint that starts running later opens as it
+ * starts); `#s{id}` opens that card and scrolls to it.
  * Opening or closing a card never changes another card. The rail keeps that
  * state across live updates, so render it with `key={phase.number}` when the
  * phase can change under it.
@@ -27,13 +30,13 @@
  * `phase-status`, `phase-status-bar`, `rail-summary`,
  * `section[data-rail-row]` (with `data-kind`, `data-row-state`),
  * `wave-name`, `wave-mode`, `wave-duration`, `wave-retries`,
- * `escalation-banner`, plus those in `SprintCard.tsx`.
+ * `escalation-banner`, `run-end` (with `data-kind`), plus those in `SprintCard.tsx`.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Escalation, Phase, Project } from '../../core/model.js';
 import { StatusIcon } from '../components/StatusIcon.js';
 import { StatusSegments } from '../components/StatusSegments.js';
-import { phaseLabel, phaseRuns } from '../data/status.js';
+import { notStartedTasks, phaseLabel, phaseRuns } from '../data/status.js';
 import { plural } from '../format.js';
 import { ESCALATION_TEXT, escalationTitle } from '../live/derive.js';
 import { paths, useRouter } from '../shell/router.js';
@@ -41,8 +44,8 @@ import { ParseWarnings } from '../states/ParseWarnings.js';
 import { phaseFiles } from '../states/warnings.js';
 import { StatusBadge } from '../sprint/parts.js';
 import { phaseBadge } from '../sprint/status.js';
-import { railView, type RailRow, type RailView } from './derive.js';
-import { isRunningState, SprintCard } from './SprintCard.js';
+import { isActiveState, railView, runEnd, type RailRow, type RailView, type RunEnd } from './derive.js';
+import { SprintCard } from './SprintCard.js';
 import './rail.css';
 
 export interface PhaseRailProps {
@@ -70,6 +73,7 @@ export function PhaseRail({ project, phase, lead, headingLevel = 1, titleId, ban
   }, [running]);
 
   const open = useOpenCards(view);
+  const end = runEnd(view);
 
   const runs = phaseRuns(project, phase.number);
   const progress = project.progress.byPhase[String(phase.number)];
@@ -111,7 +115,7 @@ export function PhaseRail({ project, phase, lead, headingLevel = 1, titleId, ban
           <ParseWarnings project={project} files={phaseFiles(project, phase)} />
         </div>
 
-        <StatusSegments progress={progress} testId="phase-status-bar" />
+        <StatusSegments progress={progress} notStarted={notStartedTasks(project, phase)} testId="phase-status-bar" />
 
         <div className="rail-meta">
           <Sub className="rail-h">Sprints</Sub>
@@ -150,6 +154,28 @@ export function PhaseRail({ project, phase, lead, headingLevel = 1, titleId, ban
             </div>
           </section>
         ))}
+
+        {end && <RunEndBanner end={end} />}
+      </div>
+    </div>
+  );
+}
+
+/** Under the last wave once the run has ended: complete, or what needs you. */
+function RunEndBanner({ end }: { end: RunEnd }) {
+  return (
+    <div className={`banner rail-end ${end.kind}`} role="status" data-testid="run-end" data-kind={end.kind}>
+      <StatusIcon kind={end.kind} />
+      <div>
+        <strong>{end.title}</strong>
+        {end.attentionText !== null && <span className="rail-end-attention"> · {end.attentionText}</span>}
+        {end.items.length > 0 && (
+          <ul>
+            {end.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -195,7 +221,7 @@ function useOpenCards(view: RailView): { ids: ReadonlySet<string>; toggle: (id: 
 }
 
 function runningIds(view: RailView): string[] {
-  return view.rows.flatMap((r) => r.sprints.filter((s) => isRunningState(s.state)).map((s) => s.id));
+  return view.rows.flatMap((r) => r.sprints.filter((s) => isActiveState(s.state)).map((s) => s.id));
 }
 
 /** `#s2.3` → `2.3`; anything else → `null`. */

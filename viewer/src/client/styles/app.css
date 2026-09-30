@@ -149,6 +149,7 @@
   background: var(--manual);
 }
 .seg-bar i[data-status='todo'],
+.seg-bar i[data-status='future'],
 .seg-bar i[data-status='unknown'] {
   background: var(--border-strong);
 }
