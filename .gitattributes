@@ -1,0 +1,8 @@
+# Store text as LF in the repo; check out with the platform default.
+* text=auto
+
+# Binary assets
+*.png binary
+*.gif binary
+*.jpg binary
+*.ico binary
