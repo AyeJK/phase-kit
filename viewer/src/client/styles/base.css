@@ -55,6 +55,34 @@ code {
   color: var(--text-3);
 }
 
+/*
+ * Scrollbars: a skinny rounded thumb on a clear track. Chromium and Safari
+ * take the ::-webkit-scrollbar rules; Chromium ignores those once
+ * scrollbar-width or scrollbar-color is set, so the standard properties are
+ * kept to browsers without them (Firefox).
+ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
 /* Focus: every interactive element. */
 :focus-visible {
   outline: 2px solid var(--accent);

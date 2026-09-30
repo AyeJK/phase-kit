@@ -242,6 +242,10 @@ test.describe('the rail in the list view', () => {
     await open(page, '/list?phase=1');
     await expect(page.getByTestId('phase-status')).toHaveText('Complete');
     await expect(page.getByTestId('phase-progress-text')).toHaveText('6/6 tasks');
+    // A Complete card drops its status bar; the badge carries it.
+    const complete = page.locator('article[data-sprint-card][data-state="complete"]');
+    await expect(complete.first()).toBeVisible();
+    await expect(complete.getByTestId('card-status-bar')).toHaveCount(0);
 
     await open(page, '/list?phase=3');
     const status = page.getByTestId('phase-status');

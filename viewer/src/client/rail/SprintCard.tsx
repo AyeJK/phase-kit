@@ -4,7 +4,8 @@
  * `derive.ts`'s {@link RailSprint}; this file only draws it.
  *
  * - Collapsed: a toggle row ("Sprint 2.1", the title, the state badge and a
- *   chevron), then the sprint's status bar.
+ *   chevron), then the sprint's status bar (left out once it's Complete; the
+ *   badge says it all).
  * - Open: the goal, the tasks table (shared `TasksTable`, not-started rows in
  *   amber once the sprint has begun), then collapsed rows: Acceptance
  *   criteria (count), Dependencies (as text), Verification (count) and Run
@@ -102,7 +103,7 @@ export function SprintCard({ sprint, open, onToggle, dashed, headingLevel }: Spr
           </span>
         </button>
       </Heading>
-      <StatusSegments progress={sprint.progress} testId="card-status-bar" />
+      {sprint.state !== 'complete' && <StatusSegments progress={sprint.progress} testId="card-status-bar" />}
 
       <div className="card-body" id={bodyId} hidden={!open} data-testid="card-body">
         {open && <CardBody sprint={sprint} />}

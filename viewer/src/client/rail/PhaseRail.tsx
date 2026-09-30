@@ -10,8 +10,7 @@
  * - Banners: open escalations, then parse warnings for the phase file and
  *   its run log.
  * - The phase's status bar.
- * - The "Sprints" line: "2 waves · 1 retry" (or the plain tag "No run log")
- *   on the left, "last event 9:25 PM" on the right.
+ * - The "Sprints" line: "2 waves · 1 retry" (or the plain tag "No run log").
  * - One row per rail group from `railView`: the 180px wave cell (name with a
  *   check when done, mode, duration, retries) beside that group's cards.
  *
@@ -25,7 +24,7 @@
  * stream update and once a minute while a wave is running (its "so far").
  *
  * Test hooks: `phase-rail` (with `data-phase`), `phase-progress-text`,
- * `phase-status`, `phase-status-bar`, `rail-summary`, `rail-last-event`,
+ * `phase-status`, `phase-status-bar`, `rail-summary`,
  * `section[data-rail-row]` (with `data-kind`, `data-row-state`),
  * `wave-name`, `wave-mode`, `wave-duration`, `wave-retries`,
  * `escalation-banner`, plus those in `SprintCard.tsx`.
@@ -34,8 +33,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Escalation, Phase, Project } from '../../core/model.js';
 import { StatusIcon } from '../components/StatusIcon.js';
 import { StatusSegments } from '../components/StatusSegments.js';
-import { lastEventAt, phaseLabel, phaseRuns } from '../data/status.js';
-import { formatTime, plural } from '../format.js';
+import { phaseLabel, phaseRuns } from '../data/status.js';
+import { plural } from '../format.js';
 import { ESCALATION_TEXT, escalationTitle } from '../live/derive.js';
 import { paths, useRouter } from '../shell/router.js';
 import { ParseWarnings } from '../states/ParseWarnings.js';
@@ -73,7 +72,6 @@ export function PhaseRail({ project, phase, lead, headingLevel = 1, titleId, ban
   const open = useOpenCards(view);
 
   const runs = phaseRuns(project, phase.number);
-  const last = runs ? lastEventAt(runs) : null;
   const progress = project.progress.byPhase[String(phase.number)];
   const done = progress?.done ?? 0;
   const eligible = progress?.eligible ?? 0;
@@ -124,11 +122,6 @@ export function PhaseRail({ project, phase, lead, headingLevel = 1, titleId, ban
           ) : (
             <span className="tag" data-testid="rail-summary">
               No run log
-            </span>
-          )}
-          {last !== null && (
-            <span className="rail-last" data-testid="rail-last-event">
-              last event {formatTime(last)}
             </span>
           )}
         </div>

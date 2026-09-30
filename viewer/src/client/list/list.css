@@ -5,9 +5,13 @@
  * into the plain heading line this view uses.
  */
 
+/*
+ * The phase column sizes to its content rather than a fixed track, so when the
+ * list overflows its scrollbar widens the column instead of squeezing the rows.
+ */
 .list-layout {
   display: grid;
-  grid-template-columns: var(--list) minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   height: calc(100vh - var(--head) - var(--filter));
 }
 
@@ -19,6 +23,10 @@
   padding: 12px;
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+/* The content width that makes the column exactly `--list` with no scrollbar (less padding and border). */
+.phase-list > * {
+  width: calc(var(--list) - 25px);
 }
 .phase-list ol {
   display: flex;
@@ -144,6 +152,9 @@
     overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+  .phase-list > * {
+    width: auto;
   }
   .phase-list ol {
     flex-direction: row;

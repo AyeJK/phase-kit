@@ -102,10 +102,6 @@
   text-transform: uppercase;
   color: var(--text-3);
 }
-.rail-last {
-  margin-left: auto;
-  white-space: nowrap;
-}
 
 /* ---------- Rail rows and the wave column ---------- */
 
@@ -201,18 +197,25 @@
   display: none;
 }
 
-/* A wave's cards stack; the wave cell carries the "ran together" grouping. */
+/*
+ * A wave's cards stack; the wave cell carries the "ran together" grouping.
+ * The stack fills its row, so when the wave cell is the taller side the
+ * cards share the extra height and their edges line up with the cell's.
+ */
 .rail-cards {
   display: grid;
   gap: 10px;
-  align-content: start;
   min-width: 0;
 }
 
 /* ---------- Sprint cards ---------- */
 
+/* A column so a card stretched to its wave cell keeps its content centred. */
 .rail-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
   padding: 14px 16px;
   background: var(--card);

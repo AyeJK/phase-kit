@@ -97,9 +97,9 @@ test.describe('multi-phase fixture', () => {
     await expect(page.getByTestId('phase-status')).toHaveText('1 task blocked');
     await expect(page.getByTestId('phase-status-bar')).toHaveClass(/started/);
 
-    // Sprints line: summary and the last event.
+    // Sprints line: the summary only (no last-event time).
     await expect(page.getByTestId('rail-summary')).toHaveText('1 wave · 0 retries');
-    await expect(page.getByTestId('rail-last-event')).toHaveText(`last event ${formatTime('2026-09-21T14:02:10Z')}`);
+    await expect(page.getByText(/last event/)).toHaveCount(0);
 
     // Rows: the logged wave, then the sprints that haven't run.
     expect(await attrs(page.locator('section[data-rail-row]'), 'data-rail-row')).toEqual(['wave-1-1', 'not-run']);
