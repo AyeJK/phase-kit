@@ -179,6 +179,32 @@ export const RUN_LOGS = {
    * unterminated garbage tail. Read it as a Buffer.
    */
   binaryGarbage: path.join(FIXTURES_DIR, 'runs', 'binary-garbage.jsonl'),
+  /**
+   * Phase 3 with the implementers' `task` lines (28 lines: 13 gate and start lines, 15 `task`
+   * lines). Wave 1 runs 3.1 and 3.2 in parallel, their `task` lines interleaved: 3.1 builds
+   * tasks 1 and 2; 3.2 builds 1 and 2 and starts 3, which its `implement` line reports blocked
+   * (a `start` with no `pass`). 3.1's verify fails and its retry (attempt 2) logs task 2 again.
+   * Wave 2's `start` line and first `task` line land before wave 1's `doc_sync` lines; it ends
+   * mid-implementation with task 1 built, task 2 running, and a `task` line for a task 9.
+   * See {@link TASK_LINES}.
+   */
+  taskLines: path.join(FIXTURES_DIR, 'runs', 'task-lines.jsonl'),
+} as const;
+
+/** 1-based line numbers in the `taskLines` fixture. */
+export const TASK_LINES = {
+  /** 3.2's `task` `start` for task 3, which never gets a `pass`. */
+  blockedTaskStart: 11,
+  /** 3.1's `implement` `start` for attempt 2. */
+  retryStart: 16,
+  /** 3.1's `task` `pass` for task 2 in the retry (its latest line for that task). */
+  retryTaskPass: 18,
+  /** Wave 2's `implement` `start`, before wave 1's `doc_sync` lines. */
+  nextWaveStart: 22,
+  /** Wave 1's last line: 3.2's `doc_sync`. */
+  waveOneEnd: 25,
+  /** 3.3's `task` line for task 9. */
+  unknownTask: 28,
 } as const;
 
 /** 1-based line numbers of the notable lines in the run-log fixtures. */

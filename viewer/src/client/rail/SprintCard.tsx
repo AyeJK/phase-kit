@@ -8,7 +8,8 @@
  *   badge says it all). A card that turns Complete while on screen keeps its
  *   all-green bar for {@link COMPLETE_BAR_MS} first.
  * - Open: the goal, the tasks table (shared `TasksTable`, not-started rows in
- *   amber once the sprint has begun), the failure being retried (while there
+ *   amber once the sprint has begun, and rows following the implementer's
+ *   `task` lines as Running then Built until doc sync), the failure being retried (while there
  *   is one), then collapsed rows: Acceptance criteria (count), Dependencies
  *   (as text), Verification (count) and Run notes (count; left out when the
  *   sprint has none). Every attempt note stays in Run notes.
@@ -31,7 +32,7 @@ import { StatusSegments } from '../components/StatusSegments.js';
 import { paths } from '../shell/router.js';
 import { Inline } from '../sprint/markdown.js';
 import { CriteriaList, TasksTable } from '../sprint/parts.js';
-import { doneOfEligible } from '../sprint/status.js';
+import { doneOfEligible, liveTaskStates } from '../sprint/status.js';
 import { isFailedState, isGateState, type CurrentFailure, type RailSprint, type RunNote, type SprintState } from './derive.js';
 
 /** Badge class (`.status.{kind}`) per state; `not-started` is a plain tag instead. */
@@ -147,7 +148,7 @@ function CardBody({ sprint }: { sprint: RailSprint }) {
         <span className="label">Tasks</span>
         <span>{doneOfEligible(sprint.progress)}</span>
       </div>
-      <TasksTable tasks={s.tasks} />
+      <TasksTable tasks={s.tasks} live={liveTaskStates(sprint.run)} />
       {sprint.failure !== null && <FailureRow failure={sprint.failure} />}
 
       <div className="card-rows">

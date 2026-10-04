@@ -113,6 +113,10 @@ code {
     animation: none;
   }
 }
+/* Built during a run, not yet verified: the run's colour, never the green of Complete. */
+.i.built {
+  color: var(--running);
+}
 .i.fail {
   color: var(--failed);
 }

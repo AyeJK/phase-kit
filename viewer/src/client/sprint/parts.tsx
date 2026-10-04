@@ -6,7 +6,7 @@
 import type { AcceptanceCriterion, Task } from '../../core/model.js';
 import { StatusIcon } from '../components/StatusIcon.js';
 import { Inline } from './markdown.js';
-import { taskIcon, taskStatusWords, type BadgeView } from './status.js';
+import { taskRow, type BadgeView, type LiveTaskState } from './status.js';
 import './sprint.css';
 
 /** A derived status badge (`.status`), or the plain tag for "Not started" and friends. */
@@ -35,28 +35,36 @@ export function StatusBadge({ badge, testId }: { badge: BadgeView; testId?: stri
  * through. Once any task is done or running, the not-started ones are
  * `remaining` and highlighted in amber, so a straggler doesn't fade into
  * the grey of a sprint nobody has touched.
+ *
+ * `live` is the sprint's live task progress (`liveTaskStates`): while the
+ * sprint is being implemented, a not-started row whose task number is in it
+ * reads Running or Built instead (`data-progress` says which; `data-status`
+ * stays the phase file's status). Such a row counts as started and is never
+ * `remaining`. Rows with any other status are never overlaid.
  */
-export function TasksTable({ tasks }: { tasks: readonly Task[] }) {
+export function TasksTable({ tasks, live }: { tasks: readonly Task[]; live?: ReadonlyMap<number, LiveTaskState> }) {
   if (tasks.length === 0) return <p className="none">No tasks</p>;
-  const started = tasks.some((t) => t.status === 'done' || t.status === 'active');
+  const rows = tasks.map((task) => ({ task, view: taskRow(task, live) }));
+  const started = rows.some(({ task, view }) => task.status === 'done' || task.status === 'active' || view.live !== null);
   return (
     <table className="tasks" data-testid="tasks-table">
       <tbody>
-        {tasks.map((task) => {
+        {rows.map(({ task, view }) => {
           const cut = task.status === 'cut' || task.status === 'deferred';
-          const remaining = started && task.status === 'todo';
-          const icon = taskIcon(task.status);
+          const remaining = started && task.status === 'todo' && view.live === null;
+          const icon = view.icon;
           return (
             <tr
               key={task.line}
               className={cut ? 'cut' : remaining ? 'remaining' : undefined}
               data-task={task.number ?? ''}
               data-status={task.status}
+              data-progress={view.live ?? undefined}
             >
               <td className={`st ${icon}`}>
                 <span className="st-in">
                   <StatusIcon kind={icon} />
-                  {taskStatusWords(task)}
+                  {view.words}
                 </span>
               </td>
               <td className="n">{task.number ?? ''}</td>

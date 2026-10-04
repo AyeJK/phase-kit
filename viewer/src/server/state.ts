@@ -11,7 +11,7 @@
  * | Update     | When |
  * |------------|------|
  * | `phase`    | A phase file was added or its parsed {@link Phase} changed. Carries the new project progress. |
- * | `run`      | A run log was added, or its events or derivation changed (an append, or a phase edit that changed which sprints run a wave test). |
+ * | `run`      | A run log was added, or its events or derivation changed (an append, or a phase edit that changed which sprints run a wave test or which task numbers a sprint has). |
  * | `removed`  | A phase file or run log is gone. Carries the new project progress. |
  * | `warnings` | The project's warning list changed. Carries the whole list. |
  * | `design`   | `docs/design/design-system.md` appeared or disappeared. |
@@ -39,6 +39,7 @@ import {
   loadPhaseFile,
   loadRunLog,
   phaseFileNumber,
+  sprintTaskNumbers,
   uiSprintIds,
   type LoadedPhase,
 } from '../core/load.js';
@@ -106,6 +107,8 @@ export async function createProjectState(root: string): Promise<ProjectState> {
   let hasDesignSystem = false;
   /** `uiSprints` the cached run derivations were made with. */
   let uiSprints: string[] = [];
+  /** `sprintTasks` (each sprint's task numbers) the cached run derivations were made with. */
+  let sprintTasks: Record<string, number[]> = {};
 
   /** What clients last saw, for change detection. */
   const phaseJson = new Map<string, string>();
@@ -136,8 +139,9 @@ export async function createProjectState(root: string): Promise<ProjectState> {
         if (await isFile(file)) phases.set(file, await loadPhaseFile(file, n));
       }
       uiSprints = uiSprintIds([...phases.values()].map((l) => l.phase));
+      sprintTasks = sprintTaskNumbers([...phases.values()].map((l) => l.phase));
       for (const log of await findRunLogs(phasesDir)) {
-        runLogs.set(log.file, await loadRunLog(log.file, log.phase, uiSprints));
+        runLogs.set(log.file, await loadRunLog(log.file, log.phase, uiSprints, sprintTasks));
       }
     }
   } catch (err) {
@@ -209,7 +213,7 @@ export async function createProjectState(root: string): Promise<ProjectState> {
       const n = runLogPhase(name);
       if (n === null || dir !== runsDir) return {};
       if (await isFile(file)) {
-        runLogs.set(file, await loadRunLog(file, n, uiSprints));
+        runLogs.set(file, await loadRunLog(file, n, uiSprints, sprintTasks));
         dirWarning = null;
       } else {
         runLogs.delete(file);
@@ -228,15 +232,22 @@ export async function createProjectState(root: string): Promise<ProjectState> {
     try {
       const touched = await reread(change);
 
-      // A phase edit can change which sprints run a wave test; re-derive every
-      // cached log when it does (from cached events, no re-read).
+      // A phase edit can change which sprints run a wave test, or which task
+      // numbers a sprint has; re-derive every cached log when it does (from
+      // cached events, no re-read).
       let rederived = false;
       if (touched.phaseFile !== undefined) {
-        const next = uiSprintIds([...phases.values()].map((l) => l.phase));
-        if (JSON.stringify(next) !== JSON.stringify(uiSprints)) {
+        const loaded = [...phases.values()].map((l) => l.phase);
+        const next = uiSprintIds(loaded);
+        const nextTasks = sprintTaskNumbers(loaded);
+        if (
+          JSON.stringify(next) !== JSON.stringify(uiSprints) ||
+          JSON.stringify(nextTasks) !== JSON.stringify(sprintTasks)
+        ) {
           uiSprints = next;
+          sprintTasks = nextTasks;
           for (const log of runLogs.values()) {
-            log.runs = { ...log.runs, ...deriveRun(log.runs.events, { uiSprints }) };
+            log.runs = { ...log.runs, ...deriveRun(log.runs.events, { uiSprints, sprintTasks }) };
           }
           rederived = true;
         }

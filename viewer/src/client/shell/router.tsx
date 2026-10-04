@@ -17,9 +17,10 @@
  * `/overview` → `/`, `/phase/:n` → `/?phase=n`, `/sprint/:id` →
  * `/?phase={n}#s{id}` (a hash on `/phase/:n` is kept).
  *
- * On the first load only, a bare `/` (no query, no hash) goes to `/list` when
- * the list view was the last one used (`viewPref.ts`). Any later navigation
- * to `/`, such as the Kanban toggle, stays on the kanban.
+ * On the first load only, a bare `/` (no query, no hash) goes to `/list`
+ * unless the kanban was the last layout used (`viewPref.ts`); with nothing
+ * remembered the list view is the default. Any later navigation to `/`, such
+ * as the Kanban toggle, stays on the kanban.
  *
  * Hash-only links (`#s2.3` on the rail) are left to the browser, which jumps
  * to the element without a navigation; `hashchange` keeps `hash` here in
@@ -38,7 +39,7 @@ import {
 } from 'react';
 import { phaseOfSprintId } from '../data/status.js';
 import type { PhaseFilter } from '../rail/derive.js';
-import { rememberedView } from './viewPref.js';
+import { DEFAULT_VIEW, rememberedView } from './viewPref.js';
 
 /** A matched route. */
 export type Route =
@@ -135,10 +136,11 @@ function settledLocation(): Location {
   return readLocation();
 }
 
-/** The location on first load: old routes redirected, and a bare `/` sent to the remembered view. */
+/** The location on first load: old routes redirected, and a bare `/` sent to the remembered view (else the default one). */
 function initialLocation(): Location {
   const location = settledLocation();
-  if (cleanPath(location.pathname) === '/' && location.search === '' && location.hash === '' && rememberedView() === 'list') {
+  const view = rememberedView() ?? DEFAULT_VIEW;
+  if (cleanPath(location.pathname) === '/' && location.search === '' && location.hash === '' && view === 'list') {
     window.history.replaceState(null, '', paths.list());
     return readLocation();
   }

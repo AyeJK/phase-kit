@@ -58,8 +58,13 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 /**
  * Run-log gate names from event format v1, plus `unknown` for any other value
  * a future writer might send.
+ *
+ * `task` is not a gate that runs: an implementer writes a `task` line as it
+ * starts and as it finishes each task. Those lines are markers, kept out of
+ * every wave's and sprint's events and steps; what they say is in
+ * {@link SprintRun.tasks} (see `derive/run.ts`).
  */
-export const RUN_GATES = ['implement', 'verify', 'wave_test', 'doc_sync', 'unknown'] as const;
+export const RUN_GATES = ['implement', 'verify', 'wave_test', 'doc_sync', 'task', 'unknown'] as const;
 
 /** Which gate wrote a {@link RunEvent}. See {@link RUN_GATES}. */
 export type RunGate = (typeof RUN_GATES)[number];
@@ -67,12 +72,13 @@ export type RunGate = (typeof RUN_GATES)[number];
 /**
  * Run-log results from event format v1, plus `unknown` for any other value.
  *
- * `start` is only valid on `implement`: phase-builder logs it when a sprint's
- * implementation begins (logs written before it existed have none, and read
- * exactly as before). It is a marker, not an outcome: it is never a
- * {@link GateStep}, never counts as an attempt, and never cuts a wave (see
- * `derive/run.ts`). `start` on any other gate is read as `unknown`, with a
- * warning.
+ * `start` is only valid on `implement` and `task`. On `implement`,
+ * phase-builder logs it when a sprint's implementation begins (logs written
+ * before it existed have none, and read exactly as before). It is a marker,
+ * not an outcome: it is never a {@link GateStep}, never counts as an attempt,
+ * and never cuts a wave (see `derive/run.ts`). On `task`, the implementer logs
+ * it as it begins a task, and `pass` as it finishes it. `start` on any other
+ * gate is read as `unknown`, with a warning.
  */
 export const RUN_RESULTS = ['pass', 'partial', 'warn', 'fail', 'blocked', 'start', 'unknown'] as const;
 
@@ -81,7 +87,8 @@ export type RunResult = (typeof RUN_RESULTS)[number];
 
 /**
  * Where a sprint stands inside one wave, derived from its latest event with a
- * known gate (events with gate `unknown` are skipped). Any result other than
+ * known gate (events with gate `unknown` are skipped, and `task` lines are
+ * never among a sprint's events). Any result other than
  * `fail` counts as the gate passing (`partial`, `warn`, `blocked` and
  * `unknown` included):
  *
@@ -340,7 +347,33 @@ export interface RunEvent {
   summary: string;
   /** `doc_sync` only: files the wave changed, relative to the app root. Absent when not logged. */
   files?: string[];
+  /** `task` lines only: the task number, read from `summary`. Absent on every other gate. */
+  task?: number;
   /** 1-based line of the event in its `.jsonl` file. */
+  line: number;
+}
+
+/**
+ * Where one task stands while its sprint is being implemented, from the
+ * sprint's latest `task` line for that task number in one wave.
+ *
+ * It is the implementer's own report, not a status: the gates still decide
+ * whether the work passes, and the task's {@link Task.status} changes only
+ * when doc sync edits the phase file.
+ */
+export interface TaskProgress {
+  /** Task number: the `#` of the task's row. */
+  task: number;
+  /**
+   * `running` after the task's `task` `start` line; `built` after its `pass`
+   * line: the implementer finished it, and no gate has checked it yet.
+   */
+  state: 'running' | 'built';
+  /** `attempt` as logged: the implementation run that wrote the line. */
+  attempt: number;
+  /** Timestamp as logged. */
+  ts: string;
+  /** 1-based line of the `task` line in the `.jsonl` file. */
   line: number;
 }
 
@@ -431,7 +464,7 @@ export interface SprintRun {
   run: number;
   /** Wave number within the run. */
   wave: number;
-  /** This sprint's events in this wave, in log order, `implement` `start` markers included. */
+  /** This sprint's events in this wave, in log order, `implement` `start` markers included. `task` lines are not: see {@link SprintRun.tasks}. */
   events: RunEvent[];
   /** The same events as ordered gate steps, with a per-gate sequence number. `start` markers are left out. */
   steps: GateStep[];
@@ -450,6 +483,15 @@ export interface SprintRun {
    * under the sprint's Module paths first.
    */
   files: string[] | null;
+  /**
+   * Task progress from the sprint's `task` lines in this wave: the latest
+   * line per task number, ordered by task number. Absent when the wave has no
+   * `task` line for the sprint, so a log without them derives exactly as it
+   * did before they existed. `task` lines change nothing else here: not
+   * `events`, `steps`, `state`, `attempts`, `lastEvent`, `startedAt` or
+   * `updatedAt`.
+   */
+  tasks?: TaskProgress[];
   /** `ts` of the first event. */
   startedAt: string;
   /** `ts` of the latest event. */
@@ -473,7 +515,8 @@ export interface WaveRun {
    * Every event of the wave, in log order, including the `implement` `start`
    * markers placed in it (which may sit on lines between the previous wave's
    * events: the next wave's implementation starts as the previous wave's doc
-   * sync runs).
+   * sync runs). `task` lines are left out; they are in each sprint's
+   * {@link SprintRun.tasks}.
    */
   events: RunEvent[];
   /** Union of `files` from the wave's `doc_sync` events, or `null` when none carried `files`. */
@@ -496,7 +539,7 @@ export interface PhaseRuns {
   phase: number;
   /** Path of the `.jsonl` file (absolute when produced by `loadProject`). */
   file: string;
-  /** Every valid event, in log order. */
+  /** Every valid event, in log order, `task` lines included. */
   events: RunEvent[];
   /** Waves in log order, across all runs. */
   waves: WaveRun[];

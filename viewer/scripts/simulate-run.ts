@@ -36,7 +36,18 @@
  * `--fill-tasks` turns each sprint's tasks active (`~`) one by one while it's
  * implemented, so its progress bar fills before doc sync marks them done.
  *
- * Scripts (written for the `trail-log` fixture, phase 2):
+ * Task lines. {@link simulateRun} also writes the `task` lines an implementer
+ * writes (see {@link addTaskLines}): between each sprint's first `implement`
+ * `start` line and its result, a `task` `start` and a `task` `pass` line for
+ * every task the result lists as done, so the viewer's tasks table shows each
+ * one Running, then Built. A replayed log that already has `task` lines for a
+ * sprint keeps its own. They never touch the phase file.
+ *
+ * Scripts (written for the `trail-log` fixture, phase 2). {@link buildScript}
+ * gives a script's gate lines only, for tests that append them on cue;
+ * {@link buildRun} is what a named script plays: the same lines, each
+ * implementation run led by its `implement` `start` line, with the `task`
+ * lines above.
  *
  * | Script       | What it appends |
  * |--------------|-----------------|
@@ -86,10 +97,11 @@ export interface ScriptEvent {
   phase: number;
   wave: number;
   sprint: string;
-  gate: 'implement' | 'verify' | 'wave_test' | 'doc_sync';
+  gate: 'implement' | 'verify' | 'wave_test' | 'doc_sync' | 'task';
   result: 'pass' | 'partial' | 'warn' | 'fail' | 'blocked' | 'start';
   attempt: number;
   max: number;
+  /** On a `task` line, the task number alone. */
   summary: string;
   /** `doc_sync` only. */
   files?: string[];
@@ -105,9 +117,9 @@ export interface ScriptStep {
   /** Replayed steps only: the logged `ts`, in ms. */
   at?: number;
   /**
-   * A step added between logged steps (see {@link fillTasks}). With `speed`
-   * it's placed by `at` inside the wait between the logged steps around it,
-   * so it never lengthens the run.
+   * A step added between logged steps (see {@link fillTasks} and
+   * {@link addTaskLines}). With `speed` it's placed by `at` inside the wait
+   * between the logged steps around it, so it never lengthens the run.
    */
   filler?: boolean;
 }
@@ -208,7 +220,7 @@ const WAVE_3_ESCALATE: ScriptStep[] = [
   { events: [ev(3, '2.4', 'verify', 'fail', 3, 'test: 1 failing in src/export/archive.test.ts (photo order on a trip with 40+ photos)')] },
 ];
 
-/** The steps of a named script. Returns a fresh copy each call. */
+/** The steps of a named script: its gate lines only. Returns a fresh copy each call. */
 export function buildScript(name: ScriptName): ScriptStep[] {
   const steps =
     name === 'retry' ? [...WAVE_2, ...WAVE_3_PASS] : name === 'escalation' ? [...WAVE_2, ...WAVE_3_ESCALATE] : [];
@@ -216,6 +228,110 @@ export function buildScript(name: ScriptName): ScriptStep[] {
     events: step.events.map((e) => ({ ...e, ...(e.files ? { files: [...e.files] } : {}) })),
     ...(step.markDone ? { markDone: [...step.markDone] } : {}),
   }));
+}
+
+/**
+ * {@link buildScript}'s steps with the implementers' `implement` `start`
+ * lines: a step before each step that holds `implement` results, with one
+ * start line per result (same sprint, wave and attempt, empty summary).
+ */
+export function withStartLines(steps: readonly ScriptStep[]): ScriptStep[] {
+  const out: ScriptStep[] = [];
+  for (const step of steps) {
+    const results = step.events.filter((e) => e.gate === 'implement' && e.result !== 'start');
+    if (results.length > 0) out.push({ events: results.map((e): ScriptEvent => ({ ...e, result: 'start', summary: '' })) });
+    out.push(step);
+  }
+  return out;
+}
+
+/**
+ * What a named script plays: {@link buildScript}'s gate lines, with the lines
+ * the implementers write ({@link withStartLines}, then {@link addTaskLines}).
+ */
+export function buildRun(name: ScriptName): ScriptStep[] {
+  return addTaskLines(withStartLines(buildScript(name)));
+}
+
+/** Task numbers an `implement` summary lists as done: "done 1,2; blocked 3 — notes" → `[1, 2]`. */
+export function doneTasks(summary: string): number[] {
+  const m = /\bdone ([\d,\s]+)/.exec(summary.split(' — ')[0] ?? '');
+  return m ? m[1]!.split(',').map((n) => Number(n.trim())).filter((n) => Number.isInteger(n) && n > 0) : [];
+}
+
+/**
+ * Add the `task` lines an implementer writes (run-log.md, "Gates"): between
+ * each sprint's first `implement` `start` line (attempt 1) and its `implement`
+ * result, a `task` `start` line and then a `task` `pass` line for every task
+ * the result's summary lists as done, in that order, each finished task's
+ * `pass` chained with the next one's `start`. The viewer's tasks table then
+ * shows each task Running, then Built, before doc sync marks it done.
+ *
+ * The added steps are fillers, spread evenly between the start step and the
+ * result step (by `at` when every step has one, so a paced replay keeps its
+ * length). Sprints started in the same step and finished in the same step
+ * move together. A sprint is left alone when its result lists no done tasks,
+ * when no result follows its start, on a retry (which reworks what failed,
+ * not every task), and when the steps already hold `task` lines for it
+ * between the two (a replayed log that has its own).
+ *
+ * Pure: returns a new list, and never reads or writes the phase file.
+ */
+export function addTaskLines(steps: readonly ScriptStep[]): ScriptStep[] {
+  const timed = steps.length > 0 && steps.every((s) => s.at !== undefined);
+  const position = (i: number): number => (timed ? steps[i]!.at! : i);
+  const same = (a: ScriptEvent, b: ScriptEvent): boolean => a.phase === b.phase && a.sprint === b.sprint;
+  const fillers: Array<{ position: number; step: ScriptStep }> = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    // The sprints started in this step, grouped by the step that holds their result.
+    const byResult = new Map<number, Array<{ start: ScriptEvent; tasks: number[] }>>();
+    for (const start of steps[i]!.events) {
+      if (start.gate !== 'implement' || start.result !== 'start' || start.attempt !== 1) continue;
+      const isResult = (e: ScriptEvent): boolean => same(e, start) && e.gate === 'implement' && e.result !== 'start';
+      const j = steps.findIndex((s, k) => k > i && s.events.some(isResult));
+      if (j === -1) continue;
+      const logged = steps.slice(i, j + 1).some((s) => s.events.some((e) => e.gate === 'task' && same(e, start)));
+      if (logged) continue;
+      const tasks = doneTasks(steps[j]!.events.find(isResult)!.summary);
+      if (tasks.length === 0) continue;
+      byResult.set(j, [...(byResult.get(j) ?? []), { start, tasks }]);
+    }
+
+    for (const [j, sprints] of byResult) {
+      const most = Math.max(...sprints.map((s) => s.tasks.length));
+      // Slot k: each sprint's task k finishes (k ≥ 1) and its task k + 1 starts.
+      for (let k = 0; k <= most; k++) {
+        const events: ScriptEvent[] = [];
+        for (const { start, tasks } of sprints) {
+          if (k >= 1 && k <= tasks.length) events.push(taskLine(start, 'pass', tasks[k - 1]!));
+          if (k < tasks.length) events.push(taskLine(start, 'start', tasks[k]!));
+        }
+        if (events.length === 0) continue;
+        const at = position(i) + ((k + 1) / (most + 2)) * (position(j) - position(i));
+        fillers.push({ position: at, step: { events, filler: true, ...(timed ? { at } : {}) } });
+      }
+    }
+  }
+
+  // Stable: a filler at the same position as a logged step comes after it.
+  return [...steps.map((step, i) => ({ position: position(i), step })), ...fillers]
+    .sort((a, b) => a.position - b.position)
+    .map((s) => s.step);
+}
+
+/** One `task` line for the implementation run that `start` began. */
+function taskLine(start: ScriptEvent, result: 'start' | 'pass', task: number): ScriptEvent {
+  return {
+    phase: start.phase,
+    wave: start.wave,
+    sprint: start.sprint,
+    gate: 'task',
+    result,
+    attempt: start.attempt,
+    max: start.max,
+    summary: String(task),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -363,10 +479,16 @@ export function formatTs(date: Date): string {
 export interface SimulateOptions {
   /** The project folder to write into (normally {@link PreparedFixture.root}). */
   root: string;
-  /** Named script. Default `retry`. Ignored when `steps` is given. */
+  /** Named script. Default `retry`. Ignored when `steps` is given. Played with its `implement` `start` lines ({@link withStartLines}). */
   script?: ScriptName;
   /** Explicit steps instead of a named script. */
   steps?: ScriptStep[];
+  /**
+   * Write the implementers' `task` lines between each sprint's `implement`
+   * `start` and its result ({@link addTaskLines}). Default `true`; `false`
+   * plays the steps without them.
+   */
+  taskLines?: boolean;
   /** Time between steps. Default {@link DEFAULT_INTERVAL_MS}. Ignored when the steps are paced by `speed`. */
   intervalMs?: number;
   /** Time before the first step. Default `intervalMs`. */
@@ -406,7 +528,8 @@ export interface Simulation {
 
 /** Append a script's steps to the project's run logs, one step per interval (or per logged gap, with `speed`). */
 export function simulateRun(options: SimulateOptions): Simulation {
-  const steps = options.steps ?? buildScript(options.script ?? 'retry');
+  const given = options.steps ?? withStartLines(buildScript(options.script ?? 'retry'));
+  const steps = options.taskLines === false ? given : addTaskLines(given);
   const interval = Math.max(0, options.intervalMs ?? DEFAULT_INTERVAL_MS);
   const startDelay = Math.max(0, options.startDelayMs ?? interval);
   const now = options.now ?? (() => new Date());

@@ -4,7 +4,7 @@
  *
  * The top bar carries no project name (design-system.md "Unified top bar"),
  * so the project shows in the document title ("Phases · trail-log") and
- * through its phases as kanban columns.
+ * through its phases in the list view, which a first visit opens.
  */
 import { expect, test } from '@playwright/test';
 
@@ -23,6 +23,6 @@ test('app loads and shows the project with no console errors', async ({ page }) 
   await expect(page.locator('.app')).toHaveAttribute('data-connection', 'live');
   await expect(page).toHaveTitle(new RegExp(`· ${PROJECT_NAME}$`));
   await expect(page.getByRole('img', { name: 'Phase Runner' })).toBeVisible();
-  await expect(page.locator('a[data-kan-col]').first()).toHaveAccessibleName(/^Phase \d+: /);
+  await expect(page.locator('a[data-phase-item]').first()).toHaveAccessibleName(/^Phase \d+/);
   expect(errors).toEqual([]);
 });

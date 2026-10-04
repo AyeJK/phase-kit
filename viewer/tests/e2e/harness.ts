@@ -19,6 +19,7 @@
  * 4850–4855.
  */
 import { fileURLToPath } from 'node:url';
+import type { Page } from '@playwright/test';
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
 import { prepareFixture, type Freshness, type PreparedFixture } from '../../scripts/simulate-run.js';
 import { startViewerServer, type ViewerServer } from '../../src/server/http.js';
@@ -48,6 +49,20 @@ export interface Harness {
 }
 
 const VITE_CONFIG = fileURLToPath(new URL('../../vite.config.ts', import.meta.url));
+
+/**
+ * Make the kanban the last layout used, so a bare `/` opens it (a first
+ * visit opens the list view). Call before the first `goto`. It only fills in
+ * a missing choice, so a layout the test picks later is still remembered.
+ */
+export async function startOnKanban(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const { localStorage } = globalThis as unknown as {
+      localStorage: { getItem(key: string): string | null; setItem(key: string, value: string): void };
+    };
+    if (localStorage.getItem('phase-viewer:view') === null) localStorage.setItem('phase-viewer:view', 'kanban');
+  });
+}
 
 export async function startHarness(options: HarnessOptions): Promise<Harness> {
   const fixture = await prepareFixture({ fixture: options.fixture, freshness: options.freshness ?? 'fresh' });

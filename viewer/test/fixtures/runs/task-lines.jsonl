@@ -1,0 +1,28 @@
+{"v":1,"ts":"2026-09-28T10:00:00Z","phase":3,"wave":1,"sprint":"3.1","gate":"implement","result":"start","attempt":1,"max":3,"summary":""}
+{"v":1,"ts":"2026-09-28T10:00:02Z","phase":3,"wave":1,"sprint":"3.2","gate":"implement","result":"start","attempt":1,"max":3,"summary":""}
+{"v":1,"ts":"2026-09-28T10:00:20Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"start","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:00:25Z","phase":3,"wave":1,"sprint":"3.2","gate":"task","result":"start","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:03:10Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"pass","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:03:10Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"start","attempt":1,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:04:00Z","phase":3,"wave":1,"sprint":"3.2","gate":"task","result":"pass","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:04:00Z","phase":3,"wave":1,"sprint":"3.2","gate":"task","result":"start","attempt":1,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:06:40Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"pass","attempt":1,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:07:15Z","phase":3,"wave":1,"sprint":"3.2","gate":"task","result":"pass","attempt":1,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:07:15Z","phase":3,"wave":1,"sprint":"3.2","gate":"task","result":"start","attempt":1,"max":3,"summary":"3"}
+{"v":1,"ts":"2026-09-28T10:09:00Z","phase":3,"wave":1,"sprint":"3.1","gate":"implement","result":"pass","attempt":1,"max":3,"summary":"done 1,2 — Share model."}
+{"v":1,"ts":"2026-09-28T10:09:00Z","phase":3,"wave":1,"sprint":"3.2","gate":"implement","result":"blocked","attempt":1,"max":3,"summary":"done 1,2; blocked 3 — Needs an SMTP key."}
+{"v":1,"ts":"2026-09-28T10:11:10Z","phase":3,"wave":1,"sprint":"3.1","gate":"verify","result":"fail","attempt":1,"max":3,"summary":"test: 1 failing in test/share.test.ts (expired invite still accepted)"}
+{"v":1,"ts":"2026-09-28T10:11:10Z","phase":3,"wave":1,"sprint":"3.2","gate":"verify","result":"partial","attempt":1,"max":3,"summary":"criteria 2/3 met; 1 unverified"}
+{"v":1,"ts":"2026-09-28T10:11:40Z","phase":3,"wave":1,"sprint":"3.1","gate":"implement","result":"start","attempt":2,"max":3,"summary":""}
+{"v":1,"ts":"2026-09-28T10:11:55Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"start","attempt":2,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:13:30Z","phase":3,"wave":1,"sprint":"3.1","gate":"task","result":"pass","attempt":2,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:14:00Z","phase":3,"wave":1,"sprint":"3.1","gate":"implement","result":"pass","attempt":2,"max":3,"summary":"done 2 — Retry 1. Reject an invite past its expiry."}
+{"v":1,"ts":"2026-09-28T10:15:20Z","phase":3,"wave":1,"sprint":"3.1","gate":"verify","result":"pass","attempt":2,"max":3,"summary":"criteria 3/3 met"}
+{"v":1,"ts":"2026-09-28T10:15:20Z","phase":3,"wave":1,"sprint":"3.2","gate":"verify","result":"partial","attempt":2,"max":3,"summary":"criteria 2/3 met; 1 unverified"}
+{"v":1,"ts":"2026-09-28T10:15:40Z","phase":3,"wave":2,"sprint":"3.3","gate":"implement","result":"start","attempt":1,"max":3,"summary":""}
+{"v":1,"ts":"2026-09-28T10:15:50Z","phase":3,"wave":2,"sprint":"3.3","gate":"task","result":"start","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:16:30Z","phase":3,"wave":1,"sprint":"3.1","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"2 tasks updated","files":["src/share/model.ts","src/share/invite.ts","test/share.test.ts"]}
+{"v":1,"ts":"2026-09-28T10:16:30Z","phase":3,"wave":1,"sprint":"3.2","gate":"doc_sync","result":"pass","attempt":1,"max":1,"summary":"3 tasks updated","files":["src/share/model.ts","src/share/invite.ts","test/share.test.ts"]}
+{"v":1,"ts":"2026-09-28T10:18:05Z","phase":3,"wave":2,"sprint":"3.3","gate":"task","result":"pass","attempt":1,"max":3,"summary":"1"}
+{"v":1,"ts":"2026-09-28T10:18:05Z","phase":3,"wave":2,"sprint":"3.3","gate":"task","result":"start","attempt":1,"max":3,"summary":"2"}
+{"v":1,"ts":"2026-09-28T10:18:30Z","phase":3,"wave":2,"sprint":"3.3","gate":"task","result":"start","attempt":1,"max":3,"summary":"9"}

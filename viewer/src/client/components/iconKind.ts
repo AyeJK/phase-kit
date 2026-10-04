@@ -3,4 +3,4 @@
  * so pure derivations (`sprint/status.ts`) can name them without pulling in
  * JSX, and unit tests can import those derivations under the Node tsconfig.
  */
-export type IconKind = 'pass' | 'run' | 'wait' | 'fail' | 'needs' | 'manual' | 'warn';
+export type IconKind = 'pass' | 'run' | 'built' | 'wait' | 'fail' | 'needs' | 'manual' | 'warn';

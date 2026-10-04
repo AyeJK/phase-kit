@@ -645,8 +645,8 @@ describe('sprint card states', () => {
 });
 
 describe('manual tasks', () => {
-  it('read Needs you in the violet manual state when left in a started sprint (a task done or running)', () => {
-    const project = makeProject([{ n: 8, sprints: [['8.1', 'xM'], ['8.2', '~M']] }]);
+  it('read Needs you in the violet manual state once they are all that is left in a started sprint', () => {
+    const project = makeProject([{ n: 8, sprints: [['8.1', 'xM'], ['8.2', 'xxMM']] }]);
     const v = rail(project, 8);
     expect(card(v, '8.1').state).toBe('manual');
     expect(card(v, '8.1').stateText).toBe('Needs you');
@@ -655,6 +655,44 @@ describe('manual tasks', () => {
     expect(kanbanColumn(project, project.phases[0]!).tiles.map((t) => t.state)).toEqual(['manual', 'manual']);
     // The phase badge reads Needs you in violet.
     expect(phaseBadge(project, project.phases[0]!)).toEqual({ kind: 'manual', text: 'Needs you' });
+  });
+
+  it('do not read Needs you while another task is left for the agents', () => {
+    const project = makeProject([{ n: 8, sprints: [['8.1', 'x-M'], ['8.2', '~M']] }]);
+    const v = rail(project, 8);
+    expect(card(v, '8.1').state).toBe('waiting');
+    expect(card(v, '8.2').state).toBe('not-started');
+    expect(phaseBadge(project, project.phases[0]!).kind).not.toBe('manual');
+  });
+
+  it('read the running gate, not Needs you, while the sprint is being built', () => {
+    const sprints: SprintSpec[] = [['8.1', '--M'], ['8.2', '--M']];
+    const started: LineSpec[] = [
+      [0, 1, '8.1', 'implement', 'start', 1],
+      [0, 1, '8.2', 'implement', 'start', 1],
+    ];
+    const implementing = makeProject([{ n: 8, sprints, log: jsonl(started) }]);
+    expect(rail(implementing, 8).rows.flatMap((r) => r.sprints.map((s) => s.stateText))).toEqual(['Implementing', 'Implementing']);
+    expect(phaseBadge(implementing, implementing.phases[0]!)).toEqual({ kind: 'run', text: 'Running · wave 1 of 1' });
+
+    // Doc sync has ticked the tasks but its line isn't logged yet: still the gate.
+    const gates: LineSpec[] = [
+      ...started,
+      [5, 1, '8.1', 'implement', 'pass', 1],
+      [5, 1, '8.2', 'implement', 'pass', 1],
+      [6, 1, '8.1', 'verify', 'pass', 1],
+      [6, 1, '8.2', 'verify', 'pass', 1],
+    ];
+    const done: SprintSpec[] = [['8.1', 'xxM'], ['8.2', 'xxM']];
+    const syncing = makeProject([{ n: 8, sprints: done, log: jsonl(gates) }]);
+    expect(card(rail(syncing, 8), '8.1').stateText).toBe('Doc syncing');
+
+    // The wave is done and only the manual tasks are left: Needs you.
+    const synced = makeProject([
+      { n: 8, sprints: done, log: jsonl([...gates, [7, 1, '8.1', 'doc_sync', 'pass', 1], [7, 1, '8.2', 'doc_sync', 'pass', 1]]) },
+    ]);
+    expect(rail(synced, 8).rows.flatMap((r) => r.sprints.map((s) => s.state))).toEqual(['manual', 'manual']);
+    expect(phaseBadge(synced, synced.phases[0]!)).toEqual({ kind: 'manual', text: 'Needs you' });
   });
 
   it('give way to pink when the sprint also has a blocked task', () => {

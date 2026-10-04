@@ -1,7 +1,8 @@
 /**
  * The unified shell (Sprint 7.3): the phase kanban at `/`, the filter row,
  * the slide-in panel, the list view at `/list`, the Kanban | List toggle,
- * and the old routes' redirects.
+ * and the old routes' redirects. Every test starts with the kanban as the
+ * last layout used, so a bare `/` opens it.
  *
  * - The `multi-phase` fixture (as-is timestamps): phase 1 complete, phase 2
  *   in progress with a blocked task (Needs you), phase 3 not started (no run
@@ -29,7 +30,7 @@ import { notStartedTasks } from '../../src/client/data/status.js';
 import { PHASE_FILTERS, phaseGroup, phaseGroupCounts, sprintCardState } from '../../src/client/rail/derive.js';
 import { loadProject } from '../../src/core/load.js';
 import type { Project } from '../../src/core/model.js';
-import { startHarness, type Harness } from './harness.js';
+import { startHarness, startOnKanban, type Harness } from './harness.js';
 
 /*
  * The callbacks passed to `page.evaluate` run in the browser, but this file
@@ -167,6 +168,11 @@ async function barTops(page: Page): Promise<number[]> {
   }
   return tops;
 }
+
+// A first visit to `/` opens the list view (`shell.spec.ts`); these tests are about the kanban.
+test.beforeEach(async ({ page }) => {
+  await startOnKanban(page);
+});
 
 // ---------------------------------------------------------------------------
 // multi-phase
@@ -410,7 +416,14 @@ test.describe('multi-phase fixture', () => {
     await expect(page.locator('a[data-phase-item="2"]')).toHaveCSS('box-shadow', /rgb\(255, 176, 0\) 3px 0px 0px 0px inset/);
     await expect(page.locator('a[data-phase-item="2"] .pi-count')).toHaveText(countText(project, 2));
     await expect(page.locator('a[data-phase-item="2"] .seg-bar')).toBeVisible();
+    await expect(page.locator('a[data-phase-item="2"] .pi-done')).toHaveCount(0);
     await expect(page.locator('a[data-phase-item="3"]')).toHaveClass(/\bfuture\b/);
+    // A complete phase: the green check in place of the count, and no status bar.
+    const done = page.locator('a[data-phase-item="1"]');
+    await expect(done.locator('.pi-done')).toHaveAccessibleName('Complete');
+    await expect(done.locator('.pi-done svg.i.pass')).toBeVisible();
+    await expect(done.locator('.pi-count')).toHaveCount(0);
+    await expect(done.locator('.seg-bar')).toHaveCount(0);
 
     const rail = page.getByTestId('list-main').getByTestId('phase-rail');
     await expect(rail).toHaveAttribute('data-phase', '2');
@@ -553,12 +566,16 @@ test.describe('the kanban follows phase file edits', () => {
       await expect(tile(page, '2.1')).not.toHaveAttribute('data-state', 'needs-you');
       await expect(tile(page, '2.1').locator('svg.i.needs')).toHaveCount(0);
 
-      // 2. Finish 3.2's task 1: the sprint has started with its MANUAL task left, so the tile
-      // turns to the violet manual Needs you (its own icon, not pink), and phase 3 is In progress, 1/5.
+      // 2. Finish 3.2's task 1: the sprint has started, but task 2 is still to do, so the tile reads
+      // Waiting, not Needs you. Finish task 2 as well: only its MANUAL task is left, so the tile
+      // turns to the violet manual Needs you (its own icon, not pink), and phase 3 is In progress, 2/5.
       // Before that, 3.2's MANUAL task alone leaves the tile Not started and the phase future.
       await expect(tile(page, '3.2')).toHaveAttribute('data-state', 'not-started');
       await expect(column(page, 3)).toHaveAttribute('data-group', 'future');
       await editLine(phase3File, /\| — \| 1 \| Stats queries/, '| x | 1 | Stats queries');
+      await expect(tile(page, '3.2')).toHaveAttribute('data-state', 'waiting', { timeout: APPEAR_MS });
+      await expect(tile(page, '3.2').locator('svg.i.manual')).toHaveCount(0);
+      await editLine(phase3File, /\| — \| 2 \| Stats page with two charts/, '| x | 2 | Stats page with two charts');
       await expect(tile(page, '3.2')).toHaveAttribute('data-state', 'manual', { timeout: APPEAR_MS });
       await expect(tile(page, '3.2')).toHaveClass(/\bmanual\b/);
       await expect(tile(page, '3.2').locator('svg.i.manual')).toHaveCount(1);
@@ -566,16 +583,16 @@ test.describe('the kanban follows phase file edits', () => {
       await expect(tile(page, '3.2').locator('svg.i.manual')).toHaveCSS('color', MANUAL_RGB);
       await expect(tile(page, '3.2').locator('.visually-hidden')).toHaveText(', Needs you');
       await expect(column(page, 3)).toHaveAttribute('data-group', 'progress');
-      await expect(column(page, 3).getByTestId('kan-count')).toHaveText('1/5 tasks');
+      await expect(column(page, 3).getByTestId('kan-count')).toHaveText('2/5 tasks');
 
-      // 3. Block that task instead: blocked and manual together read pink needs you, still In progress, 0/5.
+      // 3. Block task 1 instead: blocked and manual together read pink needs you, still In progress, 1/5.
       await editLine(phase3File, /\| x \| 1 \| Stats queries/, '| BLOCKED | 1 | Stats queries');
       await expect(tile(page, '3.2')).toHaveAttribute('data-state', 'needs-you', { timeout: APPEAR_MS });
       await expect(tile(page, '3.2')).toHaveClass(/\bneeds\b/);
       await expect(tile(page, '3.2').locator('svg.i.needs')).toHaveCount(1);
       await expect(tile(page, '3.2').locator('svg.i.manual')).toHaveCount(0);
       await expect(column(page, 3)).toHaveAttribute('data-group', 'progress');
-      await expect(column(page, 3).getByTestId('kan-count')).toHaveText('0/5 tasks');
+      await expect(column(page, 3).getByTestId('kan-count')).toHaveText('1/5 tasks');
       await expect(page.locator('button[data-filter="progress"]').getByTestId('filter-count')).toHaveText('2');
 
       // 4. A table row with no closing pipe: phase 1's column gets a warning count.

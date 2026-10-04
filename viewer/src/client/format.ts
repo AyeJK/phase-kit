@@ -40,12 +40,17 @@ export function projectPath(root: string, file: string): string {
   return f;
 }
 
-/** Gate names as used in history and notes ("Implement", "Doc sync"). */
+/**
+ * Gate names as used in history and notes ("Implement", "Doc sync"). `task`
+ * lines are markers and never reach a step or a note; the entry only
+ * completes the record.
+ */
 export const GATE_NAMES: Record<RunGate, string> = {
   implement: 'Implement',
   verify: 'Verify',
   wave_test: 'Wave test',
   doc_sync: 'Doc sync',
+  task: 'Task',
   unknown: 'Gate',
 };
 
@@ -55,5 +60,6 @@ export const GATE_CHIPS: Record<RunGate, string> = {
   verify: 'Verify',
   wave_test: 'Wave test',
   doc_sync: 'Sync',
+  task: 'Task',
   unknown: 'Gate',
 };

@@ -85,6 +85,15 @@
   color: var(--text-3);
   white-space: nowrap;
 }
+/* A complete phase: the green check in place of the count (and no bar under the title). */
+.pi-done {
+  display: flex;
+  align-self: center;
+}
+.pi-done .i {
+  width: 14px;
+  height: 14px;
+}
 .pi-title {
   display: block;
   margin-top: 4px;

@@ -35,7 +35,7 @@
  * | State | When |
  * |-------|------|
  * | Needs you (`needs-you`, pink) | A task is blocked, or the sprint's latest wave ended in an escalation |
- * | Needs you (`manual`, violet) | A manual task is left and the sprint has started (a task done or running, or run events for it). Blocked wins when both apply |
+ * | Needs you (`manual`, violet) | The sprint has started (a task done or running, or run events for it) and its manual tasks are all that's left: every other task is done and no gate is running for it. Blocked wins when both apply |
  * | Waiting | The sprint passed verify or the wave test, but a sibling in its wave hasn't, so the wave's next gate can't run yet (typically the sibling is retrying) |
  * | Verify failed, Wave test failed (red) | The sprint's latest step in the phase's latest run is a failed verify or wave test with retries left (not escalated), and the retry hasn't started |
  * | Implementing, Verifying, Wave testing, Doc syncing | The sprint's derived next gate in the phase's latest run |
@@ -43,6 +43,9 @@
  * | Complete | Every eligible task done |
  * | Waiting | Some tasks done, the rest not |
  * | Not started | Anything else (a manual task in a sprint that hasn't started included) |
+ *
+ * So a sprint with a manual task reads Implementing, Verifying and so on
+ * while it is built, and Needs you only once the agents' tasks are done.
  *
  * **Run notes** per sprint, in log order across every wave it ran in: each
  * failed attempt (with how it was resolved, once a later run of the same

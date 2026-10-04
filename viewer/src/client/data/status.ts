@@ -10,7 +10,7 @@
  * | Status     | When |
  * |------------|------|
  * | `needs`    | A task is `blocked`, or the sprint's latest wave ended in an escalation |
- * | `manual`   | Not `needs`, and a `manual` task is left in a started sprint |
+ * | `manual`   | Not `needs`, the sprint has started, and its `manual` tasks are all that's left: every other eligible task is done, and its run in the phase's latest run (if any) is `done` |
  * | `complete` | Every eligible task is done (cut and deferred left out) |
  * | `running`  | The sprint is in the phase's latest run and its latest wave isn't `done` yet, or a task is `active` (`~`) |
  * | `waiting`  | Anything else |
@@ -21,7 +21,10 @@
  *
  * A sprint has started once a task is done or active (`~`), or the run log
  * has events for it. A `manual` task in a sprint that hasn't started doesn't
- * make it `manual`, so planned sprints with a manual step stay quiet.
+ * make it `manual`, so planned sprints with a manual step stay quiet. Nor
+ * does one in a sprint still being built: while a gate is running or a task
+ * is left for the agents, the sprint reads as running (or waiting), and only
+ * turns `manual` once the manual tasks are the last thing left.
  *
  * The viewer doesn't guess whether a run was stopped: a sprint whose latest
  * gate failed stays `running` until something newer is logged, as the model's
@@ -62,6 +65,18 @@ export function sprintStarted(progress: Progress | undefined, ran: boolean): boo
 }
 
 /**
+ * Whether the sprint's manual tasks are all that's left: it has one, every
+ * other eligible task is done, and no gate is running for it (its run in the
+ * phase's latest run, if any, is `done`). See the module comment.
+ */
+export function onlyManualLeft(progress: Progress | undefined, run: SprintRun | null): boolean {
+  const manual = progress?.byStatus.manual ?? 0;
+  if (!progress || manual === 0) return false;
+  if (run && run.state !== 'done') return false;
+  return progress.done + manual === progress.eligible;
+}
+
+/**
  * See the module comment.
  *
  * @param ran Whether the run log has events for the sprint (see {@link sprintRan});
@@ -74,7 +89,7 @@ export function sprintStatus(
   ran: boolean = run !== null,
 ): SprintStatus {
   if ((progress?.byStatus.blocked ?? 0) > 0 || run?.escalation) return 'needs';
-  if ((progress?.byStatus.manual ?? 0) > 0 && sprintStarted(progress, ran)) return 'manual';
+  if (onlyManualLeft(progress, run) && sprintStarted(progress, ran)) return 'manual';
   if (progress && progress.eligible > 0 && progress.done === progress.eligible) return 'complete';
   if (run && run.state !== 'done') return 'running';
   if ((progress?.byStatus.active ?? 0) > 0) return 'running';

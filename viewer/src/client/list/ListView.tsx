@@ -8,17 +8,20 @@
  *   is.
  * - The filter hides rows, never resizes them; the selected phase's rail
  *   stays even when its row is filtered out.
+ * - A complete phase's row shows the green check in place of its task count,
+ *   and no status bar.
  * - The rail's heading is a plain heading line here (no back arrow, not
  *   sticky), with the phase title as the page's `h1`.
  * - Below 900px the phase list becomes one sideways-scrolling row of compact
  *   items above the rail.
  *
  * Test hooks: `list-view`, `list-main`, `a[data-phase-item]` (with
- * `aria-current="page"` on the selected one), `board-empty`, plus the
- * rail's.
+ * `aria-current="page"` on the selected one), `.pi-done` (a complete
+ * phase's check), `board-empty`, plus the rail's.
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { Project } from '../../core/model.js';
+import { StatusIcon } from '../components/StatusIcon.js';
 import { StatusSegments } from '../components/StatusSegments.js';
 import { EMPTY_FILTER_TEXT, impliedPhase, kanbanColumns, matchesFilter } from '../board/derive.js';
 import type { PhaseFilter } from '../rail/derive.js';
@@ -57,6 +60,7 @@ export function ListView({ project, phase, show }: ListViewProps) {
           <ol>
             {visible.map((column) => {
               const current = column.number === selected;
+              const complete = column.group === 'complete';
               const className = ['phase-item', column.group === 'future' ? 'future' : ''].filter(Boolean).join(' ');
               return (
                 <li key={column.number}>
@@ -70,10 +74,16 @@ export function ListView({ project, phase, show }: ListViewProps) {
                   >
                     <span className="pi-head">
                       <span className="num">Phase {column.number}</span>
-                      <span className="pi-count">{column.countText}</span>
+                      {complete ? (
+                        <span className="pi-done" role="img" aria-label="Complete">
+                          <StatusIcon kind="pass" />
+                        </span>
+                      ) : (
+                        <span className="pi-count">{column.countText}</span>
+                      )}
                     </span>
                     <span className="pi-title">{column.title === '' ? `Phase ${column.number}` : column.title}</span>
-                    <StatusSegments progress={column.progress} notStarted={column.notStarted} />
+                    {!complete && <StatusSegments progress={column.progress} notStarted={column.notStarted} />}
                   </Link>
                 </li>
               );

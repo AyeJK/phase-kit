@@ -14,7 +14,7 @@
  *
  * `/overview`, `/phase/:n` and `/sprint/:id` are redirected by the router
  * (`shell/router.tsx`), and a bare `/` on first load opens the last layout
- * used.
+ * used (the list view when none is remembered).
  *
  * Before any view, the workspace decides what shows under the filter row
  * (design-system.md "States"): several candidate folders show the

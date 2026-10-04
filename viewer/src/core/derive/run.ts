@@ -23,6 +23,16 @@
  *   it in the log, or the next run when its wave number is lower), preferring
  *   one with lines after it; with none logged yet it opens that wave on its
  *   own. Markers are never gate steps and never attempts.
+ * - `task` lines (an implementer's "task N started" / "task N finished") are
+ *   markers too, and kept further out: they are in no wave's or sprint's
+ *   `events`, so they are never gate steps, attempts, retries or escalations,
+ *   never cut a wave, and never move a wave's or sprint's start, end or
+ *   state. Each one is placed like a start marker, in the wave with its wave
+ *   number in the run it belongs to, but never opens a wave: one with no such
+ *   wave, or whose sprint has no event in it, is left out. What they say is
+ *   {@link SprintRun.tasks}: per sprint and wave, the latest `task` line per
+ *   task number (`start` is running, `pass` is built; any other result is
+ *   ignored). A log without them derives exactly as before.
  *
  * Sprint state: see {@link SprintRunState} for the table. A wave "runs a wave
  * test" when any of its sprints is in {@link DeriveRunOptions.uiSprints}, or
@@ -41,6 +51,7 @@ import type {
   RunGate,
   SprintRun,
   SprintRunState,
+  TaskProgress,
   WaveRun,
 } from '../model.js';
 
@@ -54,6 +65,13 @@ export interface DeriveRunOptions {
    * already seen in the wave marks it as a UI wave.
    */
   uiSprints?: Iterable<string>;
+  /**
+   * Task numbers per sprint id, from the phase file. A `task` line naming a
+   * number its sprint doesn't have is ignored. A sprint not listed here (or
+   * no option at all) keeps every `task` line: there is nothing to check
+   * against. `loadProject` fills this from the phase files.
+   */
+  sprintTasks?: Readonly<Record<string, readonly number[]>>;
 }
 
 /** What {@link deriveRun} returns: the derived parts of {@link PhaseRuns}. */
@@ -70,15 +88,22 @@ const ESCALATING_GATES: ReadonlySet<RunGate> = new Set<RunGate>(['verify', 'wave
  */
 export function deriveRun(events: readonly RunEvent[], options: DeriveRunOptions = {}): RunDerivation {
   const uiSprints = new Set<string>(options.uiSprints ?? []);
+  const sprintTasks = options.sprintTasks ?? {};
   const waves: WaveRun[] = [];
 
-  // 1. Cut the log into waves by line order. Start markers wait for step 1b.
+  // 1. Cut the log into waves by line order. Start markers wait for step 1b,
+  //    task lines for step 1c.
   let run = 0;
   let current: RunEvent[] | null = null;
   let currentWave = -1;
   const groups: WaveGroup[] = [];
   const starts: RunEvent[] = [];
+  const taskLines: RunEvent[] = [];
   for (const event of events) {
+    if (isTaskLine(event)) {
+      taskLines.push(event);
+      continue;
+    }
     if (isStartMarker(event)) {
       starts.push(event);
       continue;
@@ -87,7 +112,7 @@ export function deriveRun(events: readonly RunEvent[], options: DeriveRunOptions
       if (current === null || event.wave < currentWave) run++;
       currentWave = event.wave;
       current = [];
-      groups.push({ run, wave: event.wave, events: current });
+      groups.push({ run, wave: event.wave, events: current, tasks: [] });
     }
     current.push(event);
   }
@@ -96,9 +121,12 @@ export function deriveRun(events: readonly RunEvent[], options: DeriveRunOptions
   for (const start of starts) placeStartMarker(start, groups);
   for (const group of groups) group.events.sort((a, b) => a.line - b.line);
 
+  // 1c. Hand each task line to its wave. It joins no `events` list and opens no wave.
+  for (const line of taskLines) waveOfMarker(line, groups).target?.tasks.push(line);
+
   // 2. Build each wave and its sprint runs.
   for (const group of groups) {
-    waves.push(buildWave(group.run, group.wave, group.events, uiSprints));
+    waves.push(buildWave(group.run, group.wave, group.events, group.tasks, uiSprints, sprintTasks));
   }
 
   // 3. A later event for a sprint (in any later wave or run) clears an
@@ -127,7 +155,10 @@ export function deriveRun(events: readonly RunEvent[], options: DeriveRunOptions
 interface WaveGroup {
   run: number;
   wave: number;
+  /** The wave's events, start markers included. Never a `task` line. */
   events: RunEvent[];
+  /** The `task` lines placed in the wave, in line order. */
+  tasks: RunEvent[];
 }
 
 /** An `implement` `start` line: a marker, never a gate step or an attempt. */
@@ -135,33 +166,59 @@ export function isStartMarker(event: Pick<RunEvent, 'gate' | 'result'>): boolean
   return event.gate === 'implement' && event.result === 'start';
 }
 
+/** A `task` line, whatever its result: a marker kept out of every wave's and sprint's events. */
+export function isTaskLine(event: Pick<RunEvent, 'gate'>): boolean {
+  return event.gate === 'task';
+}
+
+/** The first and last line of a group's events. Markers are appended unsorted until every one is placed, so scan. */
+const firstLine = (g: WaveGroup): number => Math.min(...g.events.map((e) => e.line));
+const lastLine = (g: WaveGroup): number => Math.max(...g.events.map((e) => e.line));
+
+/**
+ * Where a marker (a start marker or a `task` line) belongs: the run it is in
+ * (the run of the wave before it in the log, or the next run when its wave
+ * number is lower), and the wave with its wave number in that run, preferring
+ * one with lines after the marker. `target` is `null` when that wave has
+ * nothing logged yet.
+ */
+function waveOfMarker(marker: RunEvent, groups: readonly WaveGroup[]): { run: number; target: WaveGroup | null } {
+  let before: WaveGroup | null = null;
+  for (const g of groups) if (firstLine(g) < marker.line) before = g;
+  const run = before === null ? 1 : marker.wave < before.wave ? before.run + 1 : before.run;
+
+  const same = groups.filter((g) => g.wave === marker.wave && g.run === run);
+  return { run, target: same.find((g) => lastLine(g) > marker.line) ?? same[same.length - 1] ?? null };
+}
+
 /**
  * Put one start marker into the wave it belongs to, or open that wave when
  * nothing else of it is logged yet. `groups` stays ordered by first line.
  */
 function placeStartMarker(start: RunEvent, groups: WaveGroup[]): void {
-  // Markers are appended unsorted until every one is placed, so scan for the ends.
-  const firstLine = (g: WaveGroup): number => Math.min(...g.events.map((e) => e.line));
-  const lastLine = (g: WaveGroup): number => Math.max(...g.events.map((e) => e.line));
-
-  let before: WaveGroup | null = null;
-  for (const g of groups) if (firstLine(g) < start.line) before = g;
-  const run = before === null ? 1 : start.wave < before.wave ? before.run + 1 : before.run;
-
-  const same = groups.filter((g) => g.wave === start.wave && g.run === run);
-  const target = same.find((g) => lastLine(g) > start.line) ?? same[same.length - 1];
+  const { run, target } = waveOfMarker(start, groups);
   if (target) {
     target.events.push(start);
     return;
   }
-  const group: WaveGroup = { run, wave: start.wave, events: [start] };
+  const group: WaveGroup = { run, wave: start.wave, events: [start], tasks: [] };
   const at = groups.findIndex((g) => firstLine(g) > start.line);
   if (at === -1) groups.push(group);
   else groups.splice(at, 0, group);
 }
 
-/** Build one {@link WaveRun} from its events (all sharing one run and wave number). */
-function buildWave(run: number, wave: number, events: RunEvent[], uiSprints: ReadonlySet<string>): WaveRun {
+/**
+ * Build one {@link WaveRun} from its events (all sharing one run and wave
+ * number) and the `task` lines placed in it.
+ */
+function buildWave(
+  run: number,
+  wave: number,
+  events: RunEvent[],
+  taskLines: readonly RunEvent[],
+  uiSprints: ReadonlySet<string>,
+  sprintTasks: Readonly<Record<string, readonly number[]>>,
+): WaveRun {
   const bySprint = new Map<string, RunEvent[]>();
   for (const e of events) {
     let list = bySprint.get(e.sprint);
@@ -176,7 +233,13 @@ function buildWave(run: number, wave: number, events: RunEvent[], uiSprints: Rea
 
   const sprints: SprintRun[] = [];
   for (const [sprint, list] of bySprint) {
-    sprints.push(buildSprintRun(sprint, run, wave, list, hasWaveTest));
+    const sr = buildSprintRun(sprint, run, wave, list, hasWaveTest);
+    const tasks = taskLineProgress(
+      taskLines.filter((e) => e.sprint === sprint),
+      Object.prototype.hasOwnProperty.call(sprintTasks, sprint) ? sprintTasks[sprint] : undefined,
+    );
+    if (tasks.length > 0) sr.tasks = tasks;
+    sprints.push(sr);
   }
 
   const files = unionFiles(events);
@@ -243,7 +306,8 @@ function buildSprintRun(
 export function sprintState(events: readonly RunEvent[], waveHasWaveTest: boolean): SprintRunState {
   let latest: RunEvent | undefined;
   for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i]!.gate !== 'unknown') {
+    // A sprint run's events never hold a task line; skipped here for callers that pass raw events.
+    if (events[i]!.gate !== 'unknown' && events[i]!.gate !== 'task') {
       latest = events[i];
       break;
     }
@@ -290,6 +354,33 @@ function escalationFor(sr: SprintRun, events: readonly RunEvent[]): Escalation |
       .filter((e) => e.gate === last.gate)
       .map((e) => ({ attempt: e.attempt, result: e.result, summary: e.summary, ts: e.ts, line: e.line })),
   };
+}
+
+/**
+ * One sprint's task progress in one wave: the latest `task` line per task
+ * number, ordered by task number. `start` reads `running`, `pass` reads
+ * `built`; a line with any other result, or with no task number, says nothing
+ * and is skipped.
+ *
+ * @param lines The sprint's `task` lines in the wave, in line order.
+ * @param known The sprint's task numbers, when the phase file is at hand:
+ *   a line for any other number is ignored. `undefined` keeps every number.
+ */
+export function taskLineProgress(lines: readonly RunEvent[], known?: readonly number[]): TaskProgress[] {
+  const latest = new Map<number, TaskProgress>();
+  for (const e of lines) {
+    if (e.gate !== 'task' || e.task === undefined) continue;
+    if (e.result !== 'start' && e.result !== 'pass') continue;
+    if (known !== undefined && !known.includes(e.task)) continue;
+    latest.set(e.task, {
+      task: e.task,
+      state: e.result === 'start' ? 'running' : 'built',
+      attempt: e.attempt,
+      ts: e.ts,
+      line: e.line,
+    });
+  }
+  return [...latest.values()].sort((a, b) => a.task - b.task);
 }
 
 /** Events as {@link GateStep}s, numbering each gate's occurrences in line order. */

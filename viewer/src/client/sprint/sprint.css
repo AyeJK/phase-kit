@@ -108,6 +108,11 @@
 .tasks td.st.run {
   color: var(--running);
 }
+/* Built: the implementer finished the task and no gate has checked it yet.
+   The run's blue with a bare check, apart from Complete's green ringed one. */
+.tasks td.st.built {
+  color: var(--running);
+}
 .tasks td.st.needs {
   color: var(--needs);
 }

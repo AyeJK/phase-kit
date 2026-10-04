@@ -10,7 +10,10 @@
  *   has one running wave and two sprints that haven't run.
  * - A `trail-log` copy with the `simulate-run` retry script appended step by
  *   step (`writeStep`), after an `implement` `start` marker, checking each
- *   badge within {@link APPEAR_MS} of its event being appended.
+ *   badge within {@link APPEAR_MS} of its event being appended. Between the
+ *   marker and the implement lines it appends the sprint's `task` lines
+ *   (Sprint 8.5): each task row reads Running, then Built, within
+ *   {@link APPEAR_MS}, and the phase file's status once doc sync is logged.
  * - A `trail-log` copy with one task of a finished sprint set back to not
  *   started: the amber Waiting card.
  * - A `trail-log` copy with the `escalation` script appended: the escalation
@@ -23,7 +26,7 @@
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { buildScript, formatTs, writeStep } from '../../scripts/simulate-run.js';
+import { buildScript, formatTs, writeStep, type ScriptEvent } from '../../scripts/simulate-run.js';
 import { formatTime } from '../../src/client/format.js';
 import { startHarness, type Harness } from './harness.js';
 
@@ -299,10 +302,62 @@ test.describe('a run in progress', () => {
       await expect(w2.getByTestId('wave-duration')).toHaveText(/ so far$/);
       await expect(card(page, '2.2')).toHaveAttribute('data-open', 'true');
 
+      // Task lines: the implementer logs each task as it starts and finishes it, and the
+      // task's row follows within 2 s. Running, then Built; never Complete before doc sync.
+      const taskRow = (id: string, n: number): Locator => card(page, id).getByTestId('tasks-table').locator(`tr[data-task="${n}"]`);
+      const taskLines = (...lines: Array<['start' | 'pass', number]>): Promise<void> =>
+        writeStep(
+          harness.fixture.root,
+          {
+            events: lines.map(
+              ([result, n]): ScriptEvent => ({ phase: 2, wave: 2, sprint: '2.2', gate: 'task', result, attempt: 1, max: 3, summary: String(n) }),
+            ),
+          },
+          new Date(),
+        );
+      const words = card(page, '2.2').getByTestId('tasks-table').locator('td.st');
+      await expect(words).toHaveText(['Not started', 'Not started', 'Not started']);
+      await expect(card(page, '2.2').locator('tr.remaining')).toHaveCount(0);
+      const barBefore = await card(page, '2.2').getByTestId('card-status-bar').getAttribute('aria-label');
+      const phaseBefore = await page.getByTestId('phase-progress-text').textContent();
+
+      await taskLines(['start', 1]);
+      await expect(taskRow('2.2', 1).locator('td.st')).toHaveText('Running', { timeout: APPEAR_MS });
+      await expect(taskRow('2.2', 1)).toHaveAttribute('data-progress', 'running');
+      await expect(taskRow('2.2', 1)).toHaveAttribute('data-status', 'todo');
+      await expect(taskRow('2.2', 1).locator('svg.i.run')).toHaveCount(1);
+      // A task under way means the sprint has begun: the rows still to do stand out.
+      await expect(taskRow('2.2', 2)).toHaveClass(/remaining/);
+      await expect(taskRow('2.2', 1)).not.toHaveClass(/remaining/);
+
+      await taskLines(['pass', 1], ['start', 2]);
+      await expect(taskRow('2.2', 1).locator('td.st')).toHaveText('Built', { timeout: APPEAR_MS });
+      await expect(taskRow('2.2', 1)).toHaveAttribute('data-progress', 'built');
+      // Built has its own icon and the run's colour, not Complete's ringed green check.
+      await expect(taskRow('2.2', 1).locator('svg.i.built')).toHaveCount(1);
+      await expect(taskRow('2.2', 1).locator('svg.i.pass')).toHaveCount(0);
+      await expect(taskRow('2.2', 1).locator('td.st')).toHaveCSS('color', await badge(page, '2.2').evaluate((el) => (globalThis as unknown as { getComputedStyle(el: unknown): { color: string } }).getComputedStyle(el).color));
+      await expect(words).toHaveText(['Built', 'Running', 'Not started']);
+
+      await taskLines(['pass', 2], ['start', 3]);
+      await expect(words).toHaveText(['Built', 'Built', 'Running'], { timeout: APPEAR_MS });
+      await taskLines(['pass', 3]);
+      await expect(words).toHaveText(['Built', 'Built', 'Built'], { timeout: APPEAR_MS });
+
+      // Nothing else moved: the count, the bars, the badge and the wave are the phase file's and the gates'.
+      await expect(card(page, '2.2').locator('.card-sub')).toHaveText('Tasks0/3');
+      await expect(card(page, '2.2').getByTestId('card-status-bar')).toHaveAttribute('aria-label', barBefore!);
+      await expect(page.getByTestId('phase-progress-text')).toHaveText(phaseBefore!);
+      await expect(badge(page, '2.2')).toHaveText('Implementing');
+      await expect(w2).toHaveAttribute('data-row-state', 'running');
+      await expect(w2.getByTestId('wave-retries')).toHaveCount(0);
+
       // Implement lines: verifying begins. Implementing → Verifying.
       await append(0);
       await expect(badge(page, '2.2')).toHaveText('Verifying', { timeout: APPEAR_MS });
       await expect(badge(page, '2.3')).toHaveText('Verifying');
+      // Built tasks stay Built while the gates run.
+      await expect(words).toHaveText(['Built', 'Built', 'Built']);
       await expect(w2.getByTestId('wave-mode')).toHaveText('∥ Parallel');
       expect(await attrs(w2.locator('article[data-sprint-card]'), 'data-sprint-card')).toEqual(['2.2', '2.3']);
       await expect(card(page, '2.3')).toHaveAttribute('data-open', 'true');
@@ -349,6 +404,10 @@ test.describe('a run in progress', () => {
       await expect(w2.getByTestId('wave-duration')).toHaveText(/^(under 1 min|\d+ min)$/);
       await expect(badge(page, '2.2')).toHaveText('Complete');
       await expect(badge(page, '2.3')).toHaveText('Complete');
+      // Doc sync is logged: every row shows the phase file's status, and none still reads Built.
+      await expect(words).toHaveText(['Complete', 'Complete', 'Complete']);
+      await expect(page.locator('tr[data-progress]')).toHaveCount(0);
+      await expect(card(page, '2.2').locator('svg.i.built')).toHaveCount(0);
       await notes.locator('summary').click();
       await expect(notes.getByTestId('run-note')).toHaveAttribute('data-resolved', 'true');
       await expect(page.getByTestId('rail-summary')).toHaveText('2 waves · 1 retry');

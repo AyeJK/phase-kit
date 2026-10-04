@@ -127,8 +127,9 @@ export async function loadProject(root: string): Promise<Project> {
 
     // Run logs.
     const uiSprints = uiSprintIds(project.phases);
+    const sprintTasks = sprintTaskNumbers(project.phases);
     for (const log of await findRunLogs(phasesDir)) {
-      const { runs, warnings } = await loadRunLog(log.file, log.phase, uiSprints);
+      const { runs, warnings } = await loadRunLog(log.file, log.phase, uiSprints, sprintTasks);
       project.runs.push(runs);
       project.warnings.push(...warnings);
     }
@@ -152,6 +153,19 @@ export function uiSprintIds(phases: readonly Phase[]): string[] {
     .flatMap((p) => p.sprints)
     .filter((s) => s.verification.ui.length > 0 && s.verification.skipUi !== true)
     .map((s) => s.id);
+}
+
+/**
+ * Each sprint's task numbers (rows without a number left out), for
+ * {@link deriveRun}'s `sprintTasks` option: a `task` line in the run log that
+ * names a number its sprint doesn't have is ignored.
+ */
+export function sprintTaskNumbers(phases: readonly Phase[]): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const sprint of phases.flatMap((p) => p.sprints)) {
+    out[sprint.id] = sprint.tasks.map((t) => t.number).filter((n): n is number => n !== null);
+  }
+  return out;
 }
 
 /** Read and parse one phase file; a read failure becomes an empty phase plus a warning. */
@@ -233,11 +247,17 @@ export function checkDependencies(loaded: LoadedPhase[]): void {
   }
 }
 
-/** Read, parse and derive one run log; a read failure becomes an empty log plus a warning. */
+/**
+ * Read, parse and derive one run log; a read failure becomes an empty log plus a warning.
+ *
+ * @param uiSprints See {@link uiSprintIds}.
+ * @param sprintTasks See {@link sprintTaskNumbers}. Left out, every `task` line's number is kept.
+ */
 export async function loadRunLog(
   file: string,
   phase: number,
   uiSprints: readonly string[],
+  sprintTasks?: Readonly<Record<string, readonly number[]>>,
 ): Promise<{ runs: PhaseRuns; warnings: Warning[] }> {
   let bytes: Uint8Array;
   try {
@@ -260,7 +280,7 @@ export async function loadRunLog(
     });
     warnings.sort((a, b) => a.line - b.line);
   }
-  const derived = deriveRun(events, { uiSprints });
+  const derived = deriveRun(events, { uiSprints, sprintTasks });
   return { runs: { phase, file, events, ...derived }, warnings };
 }
 

@@ -189,8 +189,8 @@ test.describe('no phase plans', () => {
     await open(page, `${loop.baseURL}/`);
     const empty = page.getByTestId('no-phase-plans');
     await expect(empty).toBeVisible();
-    // `/` stays on the kanban's route, which shows the empty state instead.
-    await expect(page).toHaveURL(`${loop.baseURL}/`);
+    // A first visit's `/` goes to the list view's route, which shows the empty state instead.
+    await expect(page).toHaveURL(`${loop.baseURL}/list`);
 
     await expect(empty.locator('svg.wm-lg')).toHaveAttribute('aria-label', 'Phase Runner');
     await expect(empty.locator('h3')).toHaveText('No phase plans found');
@@ -202,8 +202,9 @@ test.describe('no phase plans', () => {
     await expect(searched.locator('[data-level="up"] dd')).toHaveText(path.resolve(base));
     await expect(searched.locator('[data-level="down"] code')).toHaveText(['notes', 'src']);
 
-    // No buttons, no kanban, no error.
+    // No buttons, no list view or kanban, no error.
     await expect(page.locator('main button')).toHaveCount(0);
+    await expect(page.getByTestId('list-view')).toHaveCount(0);
     await expect(page.getByTestId('kanban')).toHaveCount(0);
     await expect(page.getByTestId('not-found')).toHaveCount(0);
   });

@@ -1,6 +1,7 @@
 /**
  * The unified shell's own states (design-system.md "Loading", "Connection
- * lost", "Unified states"): the loading block before the first snapshot, and
+ * lost", "Unified states"): the loading block before the first snapshot, the
+ * layout a bare `/` opens (the list view on a first visit), and
  * the connection-lost banner while the server is away, and the theme choice in
  * the top bar's settings menu. The kanban, filter
  * row, panel, list view and their 375 px layouts are in `board.spec.ts`.
@@ -11,7 +12,7 @@
  * (4798 / 4799).
  */
 import { expect, test } from '@playwright/test';
-import { startHarness } from './harness.js';
+import { startHarness, startOnKanban } from './harness.js';
 
 /** The phase the trail-log fixture's newest run-log events belong to. */
 const ACTIVE_PHASE = 'Phase 2: Trip Journal';
@@ -35,13 +36,33 @@ test.describe('loading', () => {
     expect(row && shown && shown.y >= row.y + row.height).toBe(true);
     // Never connected, so nothing says the connection was lost.
     await expect(page.getByTestId('connection-lost')).toHaveCount(0);
-    await expect(page.getByTestId('kanban')).toHaveCount(0);
+    await expect(page.getByTestId('list-view')).toHaveCount(0);
 
-    // Let the stream through: the next reconnect brings the snapshot and the kanban replaces the block.
+    // Let the stream through: the next reconnect brings the snapshot and the list view replaces the block.
     await page.unroute('**/api/events');
-    await expect(page.getByTestId('kanban')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('list-view')).toBeVisible({ timeout: 15_000 });
     await expect(loading).toHaveCount(0);
     await expect(page.locator('.app')).toHaveAttribute('data-connection', 'live');
+  });
+});
+
+test.describe('layout', () => {
+  test('a first visit to / opens the list view, and the kanban once it was used last', async ({ page }) => {
+    const toggle = page.getByRole('group', { name: 'Layout' });
+
+    // Nothing remembered: the list view.
+    await page.goto('/');
+    await expect(page).toHaveURL('/list');
+    await expect(page.getByTestId('list-view')).toBeVisible();
+    await expect(toggle.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+
+    // The kanban, once chosen, is what / opens.
+    await toggle.getByRole('button', { name: 'Kanban' }).click();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByTestId('kanban')).toBeVisible();
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
+    await expect(page.getByTestId('kanban')).toBeVisible();
   });
 });
 
@@ -94,6 +115,7 @@ test.describe('connection lost', () => {
     const harness = await startHarness({ clientPort: 4798, serverPort: 4799, freshness: 'fresh' });
     try {
       // The kanban, and the panel of the active phase.
+      await startOnKanban(page);
       await page.goto(`${harness.baseURL}/`);
       await expect(page.locator('.app')).toHaveAttribute('data-connection', 'live');
       const columns = page.locator('a[data-kan-col]');

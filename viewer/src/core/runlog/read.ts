@@ -20,7 +20,11 @@
  *   is still read best-effort. `v` that isn't a number `>= 1` skips the line.
  * - Unknown `gate` / `result` values are kept as `unknown`, with the raw value
  *   in `rawGate` / `rawResult` and a warning. `result: "start"` is read without
- *   a warning on `implement` lines only; on any other gate it is `unknown`.
+ *   a warning on `implement` and `task` lines only; on any other gate it is
+ *   `unknown`.
+ * - A `task` line carries its task number alone in `summary`. It is read into
+ *   {@link RunEvent.task}; a `task` line whose `summary` isn't a whole number
+ *   is skipped with a warning.
  * - Optional fields: `summary` (missing → `""`), `files` (kept only when it is
  *   an array; non-string entries dropped), `max` (missing or invalid → the spec
  *   default, see {@link DEFAULT_MAX}). Extra fields are ignored.
@@ -41,15 +45,23 @@ export const RUN_LOG_VERSION = 1;
 /**
  * `max` used when a line has none (or an invalid one): the spec's defaults,
  * `max_verify_retries` / `max_wave_test_retries` = 3 and doc-sync's fixed 1.
- * An unknown gate gets 3 like the retrying gates.
+ * An unknown gate gets 3 like the retrying gates, and so does a `task` line,
+ * which carries its implementation run's `max`.
  */
 export const DEFAULT_MAX: Readonly<Record<RunGate, number>> = {
   implement: 3,
   verify: 3,
   wave_test: 3,
   doc_sync: 1,
+  task: 3,
   unknown: 3,
 };
+
+/** Gates whose lines may carry `result: "start"`. */
+const START_GATES: ReadonlySet<RunGate> = new Set<RunGate>(['implement', 'task']);
+
+/** A `task` line's `summary`: the task number and nothing else. */
+const TASK_NUMBER = /^\d+$/;
 
 /** What {@link readRunLog} returns. */
 export interface RunLogRead {
@@ -182,9 +194,21 @@ function readLine(
   let result: RunResult = 'unknown';
   if (KNOWN_RESULTS.has(rawResult)) result = rawResult as RunResult;
   else warn(`Unknown result ${show(rawResult)}; kept as "unknown"`);
-  if (result === 'start' && gate !== 'implement') {
+  if (result === 'start' && !START_GATES.has(gate)) {
     result = 'unknown';
-    warn(`Result "start" is only used on implement lines, not ${show(rawGate)}; kept as "unknown"`);
+    warn(`Result "start" is only used on implement and task lines, not ${show(rawGate)}; kept as "unknown"`);
+  }
+
+  // A task line names its task in `summary`; without a number it says nothing.
+  let task: number | null = null;
+  if (gate === 'task') {
+    const rawTask = obj['summary'];
+    const text = typeof rawTask === 'string' ? rawTask.trim() : '';
+    task = TASK_NUMBER.test(text) ? Number(text) : null;
+    if (task === null || !Number.isSafeInteger(task)) {
+      warn(`A task line's "summary" should be the task number alone, got ${show(rawTask)}; skipped`);
+      return null;
+    }
   }
 
   // Optional fields.
@@ -229,6 +253,8 @@ function readLine(
     warn(`Field "files" should be an array of strings, got ${show(rawFiles)}; ignored`);
   }
 
+  if (task !== null) event.task = task;
+
   return event;
 }
 
@@ -272,7 +298,8 @@ function isCount(value: unknown): value is number {
 function decode(text: string | Uint8Array): string {
   let s: string;
   if (typeof text === 'string') s = text;
-  else if (text instanceof Uint8Array) s = new TextDecoder('utf-8', { fatal: false }).decode(text);
+  // Not fatal (the default): invalid bytes become U+FFFD.
+  else if (text instanceof Uint8Array) s = new TextDecoder('utf-8').decode(text);
   else s = '';
   return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
 }
