@@ -10,6 +10,11 @@
       "name": "phase-runner",
       "source": "./plugin",
       "description": "Plan phases, then let an orchestrator build them in parallel waves gated by independent verify, UI wave-test, and single-writer doc-sync sub-agents."
+    },
+    {
+      "name": "phase-runner-hud",
+      "source": "./hud",
+      "description": "Optional, Claude Code only. A mod that shows the running phase in the status line, raises a toast when a run needs you, and answers /phase-status with no model call. Phase Runner works the same without it."
     }
   ]
 }

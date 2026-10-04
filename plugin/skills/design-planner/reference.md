@@ -16,36 +16,56 @@ colors:
   text-primary: "#..."
   text-secondary: "#..."
   accent: "#..."
+  on-accent: "#..."
   border: "#..."
   # add semantic colors as needed: success, warning, danger
 typography:
-  display-font: "{font family}"
-  body-font: "{font family}"
-  scale:
-    xs: "12px"
-    sm: "14px"
-    base: "16px"
-    lg: "20px"
-    xl: "28px"
-    display: "40px"
+  # one token per text style; add or drop steps as the product needs
+  display:
+    fontFamily: "{display font stack}"
+    fontSize: 40px
+    fontWeight: 600
+    lineHeight: 1.2
+  lg:
+    fontFamily: "{body font stack}"
+    fontSize: 20px
+    fontWeight: 600
+    lineHeight: 1.3
+  base:
+    fontFamily: "{body font stack}"
+    fontSize: 16px
+    fontWeight: 400
+    lineHeight: 1.5
+  sm:
+    fontFamily: "{body font stack}"
+    fontSize: 14px
+    fontWeight: 400
+    lineHeight: 1.5
 spacing:
-  unit: "8px"
-  scale: [4, 8, 12, 16, 24, 32, 48, 64]
+  "1": 4px
+  "2": 8px
+  "3": 12px
+  "4": 16px
+  "5": 24px
+  "6": 32px
+  "7": 48px
+  "8": 64px
 rounded:
-  sm: "4px"
-  md: "8px"
-  lg: "16px"
-  full: "9999px"
+  sm: 4px
+  md: 8px
+  lg: 16px
+  full: 9999px
 components:
-  button:
-    primary:
-      background: "{accent}"
-      text: "{on-accent color}"
-      radius: "{rounded.md}"
+  button-primary:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.on-accent}"
+    typography: "{typography.base}"
+    rounded: "{rounded.md}"
   input:
-    background: "{surface}"
-    border: "{border}"
-    radius: "{rounded.sm}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text-primary}"
+    typography: "{typography.base}"
+    rounded: "{rounded.sm}"
 ---
 
 # {Product Name} — Design System
@@ -92,6 +112,17 @@ components:
 |---------|---------------|-------|----------|------|---------|
 | {name} | {route} | {N} | {P0/P1/P2} | [spec](screens/{name}.md) | [preview](screens/{name}.html) |
 ```
+
+### The token shapes the linter reads
+
+The front matter above is in the shape `design.md lint` accepts. A different shape parses as YAML and still fails the lint.
+
+- **`colors`**, **`spacing`**, **`rounded`**: a flat map of name to value. No nested groups and no lists: a spacing `scale: [4, 8, 12]` is not read.
+- **`typography`**: one token per text style, each an object with `fontFamily` and `fontSize`, plus `fontWeight`, `lineHeight` and `letterSpacing` when the style sets them. A bare `body-font` or a `scale` of sizes is not read.
+- **`components`**: a flat map, one key per component or variant (`button-primary`, not `button` → `primary`). The sub-tokens are `backgroundColor`, `textColor`, `typography`, `rounded`, `padding`, `size`, `height` and `width`; anything else (a border color, a shadow) goes in the Components prose.
+- **References** name the group: `{colors.accent}`, `{typography.base}`, `{rounded.md}`. A bare `{accent}` is an error.
+
+Two warnings are expected and don't need fixing: `missing-primary` when the main color is named `accent`, and `orphaned-tokens` for a color no component references, such as `border`.
 
 ---
 
@@ -185,4 +216,4 @@ components:
 - [ ] Every color token referenced in prose exists in the YAML front matter (no orphan references)
 - [ ] No token value appears only in prose without a corresponding YAML entry
 
-If `npx @google/design.md lint` isn't available in this environment, walk this checklist manually before treating DESIGN.md as locked.
+If `npx -p @google/design.md designmd lint` isn't available in this environment, walk this checklist manually before treating DESIGN.md as locked.

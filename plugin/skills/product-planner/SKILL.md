@@ -5,9 +5,11 @@ description: "Plans out a product, product feature, or set of related features a
 
 # Product Planner
 
-Produces a rich, self-contained **HTML planning document** from a product or feature description. This document serves as the primary reference artifact for implementation agents and feeds into `phase-planner` for phase plan generation.
+Produces a rich, self-contained **HTML planning document** from a product or feature description. This document serves as the primary reference for implementation agents and feeds into `phase-planner` for phase plan generation.
 
 The output is NOT markdown. It is a single navigable HTML file with visual sections, SVG diagrams, and mockups — something you'll actually open and read.
+
+The file in `docs/` is the plan. In a session that can publish artifacts, the same file is also published as a hosted page with a shareable link (Step 4). That page is a copy for reading and sharing; nothing downstream reads it.
 
 ---
 
@@ -138,16 +140,82 @@ Generate a phase plan for [feature name]. Stack: [stack].
 First phase goal: [first phase goal].
 ```
 
+The path is always the file in `docs/`, never an artifact link.
+
 ### HTML design guidelines
 
-- Background: `#f9fafb` (light gray page), `#ffffff` (card/section backgrounds)
-- Sidebar: `#1e293b` (dark navy), white text, active link highlight `#3b82f6`
-- Accent colors: blue `#3b82f6`, green `#22c55e`, red `#ef4444`, amber `#f59e0b`, gray `#6b7280`
+The plan has to read correctly in two places: opened from disk, and hosted as an artifact (Step 4). The first three rules are what make that work.
+
+- Title: `<title>` is the feature name and nothing else — e.g. `<title>Notifications Rework</title>`. No "Plan:" prefix, no date, no description after a dash or colon. Put it first in `<head>`; a hosted copy takes its name from it
+- Colors: define every color once as a `:root` token, with a dark-mode set (block below). Everything else uses `var(--token)` — cards, sidebar, badges, wireframes, SVG fills and strokes. No literal color values outside the token blocks
+- Body: `body` sets `background: var(--bg)` and `color: var(--text)` explicitly. A hosted page sits on the host's own background, and a `body` without one lets it show through
+- Page: `var(--bg)` (light gray), with `var(--surface)` (white) for card/section backgrounds
+- Sidebar: `var(--sidebar-bg)` (dark navy), `var(--sidebar-text)`, active link highlight `var(--blue)`
+- Accent colors: `var(--blue)`, `var(--green)`, `var(--red)`, `var(--amber)`, `var(--gray)`
 - Font: `system-ui, -apple-system, sans-serif`
-- Section cards: white background, `border: 1px solid #e2e8f0`, `border-radius: 8px`, `padding: 24px`
+- Section cards: `background: var(--surface)`, `border: 1px solid var(--border)`, `border-radius: 8px`, `padding: 24px`
 - Max content width: `900px`, centered
 - Sidebar width: `220px`, fixed position on left
 - At `< 768px`: sidebar collapses to a top nav or is hidden — include a minimal responsive rule
+
+The token block, at the top of the plan's `<style>`:
+
+```css
+:root {
+  --bg: #f9fafb;            /* page */
+  --surface: #ffffff;       /* cards and sections */
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #6b7280;         /* secondary text */
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #ffffff;
+  --blue: #3b82f6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --gray: #6b7280;
+}
+
+/* Dark set: the reader's system setting, unless the host has pinned light */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --sidebar-bg: #0b1120;
+    --sidebar-text: #f1f5f9;
+    --blue: #60a5fa;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --gray: #94a3b8;
+    color-scheme: dark;
+  }
+}
+
+/* The same dark values again, for a host that sets its theme on the root element */
+:root[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --sidebar-bg: #0b1120;
+  --sidebar-text: #f1f5f9;
+  --blue: #60a5fa;
+  --green: #4ade80;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --gray: #94a3b8;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--text); }
+```
+
+Every token gets its first definition in the bare `:root` block; the two dark blocks only redefine. Add tokens if the plan needs more colors, in all three blocks. The `data-theme` selectors do nothing when the file is opened from disk, where the media query alone decides.
 
 These are defaults for the **planning document itself** (a tool for you to read the plan), not a statement about the product's own visual identity — that's design-planner's job, if this project uses one.
 
@@ -156,6 +224,7 @@ These are defaults for the **planning document itself** (a tool for you to read 
 - Viewbox: `0 0 800 400` or taller as needed
 - Nodes: `rx="6"` rounded rectangles, labeled with `<text>` elements
 - Arrows: `<line>` or `<path>` with `marker-end` arrowhead definitions in `<defs>`
+- Colors: fills, strokes and text come from the tokens (`style="fill: var(--blue)"` or a CSS class), never a literal value, so the diagram reads in both themes. Orange is `var(--amber)`. Check that each label reads against its node's fill
 - Keep it legible: minimum font size 13px, adequate spacing between nodes
 - Don't use ASCII art — always SVG for diagrams
 
@@ -164,8 +233,9 @@ These are defaults for the **planning document itself** (a tool for you to read 
 ## Step 4 — Save and Present
 
 1. Write the file to `docs/Plan-{FeatureName}-{YYYY-MM-DD}.html` in the project folder
-2. Present it to the user
-3. Offer the user two follow-up options:
+2. If the session can publish the file as an artifact, publish it (see below). If it can't, skip this step
+3. Present it to the user: the file path, plus the artifact link if step 2 published one
+4. Offer the user two follow-up options:
 
 ```
 Plan saved. Next steps:
@@ -177,17 +247,40 @@ Plan saved. Next steps:
    update the data flow, add mockups for a specific screen, etc.
 ```
 
+### Publishing the plan as an artifact
+
+Some sessions have an Artifact tool that publishes a local HTML file as a hosted page and returns its link (Claude app sessions do). Check the session's tools instead of assuming. With no such tool, present the file exactly as you would have before and say nothing about artifacts.
+
+When the tool is there:
+
+1. **Publish the saved file.** Give the tool the path of the file from step 1 — that file, not a copy or a rewritten version. Supply whatever else it asks for on a first publish (a one-sentence description, for example)
+2. **Record the URL.** Add this tag to the file's `<head>`, straight after `<title>`:
+
+   ```html
+   <meta name="phase-runner:artifact" content="{url}">
+   ```
+
+   A later session reads the tag and republishes to the same URL instead of creating a second artifact. Don't republish just to get the tag into the hosted copy — the next revision carries it
+3. **Give the user both.** The artifact link for reading and sharing, and the file path as the spec
+
+Rules for every publish:
+
+- **The file is the plan.** Publishing never replaces, moves or renames it, and every change goes into the file first. The artifact is a hosted copy of it
+- **A failed publish is one line, never a stop.** If the tool errors or refuses, say so in one line of the reply (`Couldn't publish the artifact: {reason}. The plan is at docs/Plan-{name}.html.`) and carry on to the follow-up options. No retry loop, and nothing for the user to fix before they can use the plan
+- **One plan, one artifact.** A file that already has a `phase-runner:artifact` tag is republished to that URL, as Iteration describes
+- **The plan keeps its own design.** If the tool comes with page-design guidance, apply it only where it's about hosting (the title, theme tokens, what may load from outside the page). The sections and layout stay as Step 3 describes
+
 ---
 
 ## Step 5 — Handoff to Phase Planner (if requested)
 
 If the user asks to proceed to phase planning immediately after the plan is created:
 
-1. Read the Implementation Handoff section from the plan
-2. Invoke the `phase-planner` skill with the plan as context
+1. Read the Implementation Handoff section from the plan file
+2. Invoke the `phase-planner` skill with the plan's file path (`docs/Plan-{name}.html`) as context
 3. The phase plans go to `docs/phases/Phase-{N}-{Name}.md` as normal markdown — the HTML plan is the *input spec*, not the output format
 
-The HTML plan file persists as a reference artifact. Implementation agents spawned by `phase-builder` should be pointed at it for full context.
+The HTML plan file persists as the reference. `phase-planner` and the implementation agents spawned by `phase-builder` are pointed at its file path for full context — never at the artifact URL, even when one exists. They read `docs/`, and an artifact link is not something they can rely on being able to open.
 
 ---
 
@@ -195,10 +288,21 @@ The HTML plan file persists as a reference artifact. Implementation agents spawn
 
 If the user asks to update an existing plan (e.g. "revise the options section", "add a mockup for the settings screen", "update the data flow now that we've decided on X"):
 
-1. Read the existing HTML file
+1. Read the existing HTML file — the one in `docs/`, not the published page
 2. Make the targeted edit — don't rewrite the whole file unless asked
-3. Re-save and re-present the link
-4. Note what changed in one line
+3. Re-save the file
+4. If the session can publish artifacts, republish it (see below)
+5. Re-present the file path, and the artifact link if there is one
+6. Note what changed in one line
+
+### Republishing a revised plan
+
+The edit goes into the file first; the artifact is updated from the file, never the other way round.
+
+- **The file has a `<meta name="phase-runner:artifact">` tag.** Republish the file to the URL in its `content`, so the same link now shows the revision. The tool may want the live page read before a new session can update it; do that read if it asks, then publish the file. If the two differ, the file wins
+- **The file has no tag.** Publish it as new and record the URL, as in Step 4. This covers plans written in a session that couldn't publish
+- **Republishing to the recorded URL fails.** Say so in one line and leave the tag as it is. Don't publish a second artifact on your own; if the user asks for a new one, publish it and replace the URL in the tag
+- **The session can't publish.** Edit and re-save as before, and leave any existing tag in place for a later session
 
 ---
 
@@ -209,5 +313,7 @@ If the user asks to update an existing plan (e.g. "revise the options section", 
 - [ ] At least 2 options compared in Options Considered
 - [ ] Sidebar navigation links to all sections via anchor IDs
 - [ ] File opens correctly with no external dependencies
-- [ ] Implementation Handoff section includes the phase-planner prompt
+- [ ] `<title>` is the feature name alone
+- [ ] Every color is a `:root` token with a dark-mode value, and `body` sets its background from one
+- [ ] Implementation Handoff section includes the phase-planner prompt, with the file path
 - [ ] File saved to `docs/` (not inside the app subfolder)

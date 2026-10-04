@@ -44,7 +44,7 @@ The orchestrator spawns you for **UI-primary sprints**. Mixed or data-only sprin
 | `design_system_doc` | `{workspace_root}/docs/design/design-system.md` — **read first**, if it exists, by section |
 | `design_sections` | Headings of `design_system_doc` the orchestrator matched to this sprint's tasks |
 | `implementation_skills` | Read after design system — e.g. a generic UI component-pattern skill, if installed |
-| `run_log` | Optional: `path`, `phase`, `wave`, `sprint`, `attempt`, `max`. When present, append one `implement` `start` line before anything else (see Run log). Absent → write nothing |
+| `run_log` | Optional: `path`, `phase`, `wave`, `sprint`, `attempt`, `max`. When present, append one `implement` `start` line before anything else, then a `task` `start` and a `task` `pass` line around each task (see Run log). Absent → write nothing |
 
 ---
 
@@ -78,7 +78,7 @@ When an assigned generic UI-pattern skill suggests something that conflicts with
 
 0. **Log the start** — if the prompt has a `run_log` block, append the `implement` `start` line now, before reading anything (see Run log)
 1. Read design system (if present) + skills + sprint scope
-2. Implement all UI tasks in the sprint
+2. Implement all UI tasks in the sprint. With a `run_log` block, append a `task` `start` line before you begin each task and a `task` `pass` line when it's finished (see Run log)
 3. Match acceptance criteria and UI copy rules from design-system.md
 4. **Self-check once, at the end** — follow the SELF-CHECK steps in your prompt: the project's typecheck, then only the test files this sprint added or changed (e2e specs included), at most two fix rounds. No full suite, no build, no browser automation (MCP browser tools, click-throughs) — verify and wave-test own those
 5. End with `SPRINT RESULT:` block, including the `CHECKS` line
@@ -96,10 +96,15 @@ mkdir -p "$(dirname '{path}')" && printf '{"v":1,"ts":"%s","phase":%d,"wave":%d,
 | When | `gate` | `result` | `summary` |
 |------|--------|----------|-----------|
 | First action, before any other work | `implement` | `start` | Empty: `'{summary}'` becomes `''` |
+| Before you begin a task | `task` | `start` | The task number alone: `'{summary}'` becomes `'3'` for task 3 |
+| When that task is finished | `task` | `pass` | The same task number |
 
-- One line per implementation run, as its own command. When you're continued with a retry that gives a new `attempt`, append a new `start` line with it before touching the failures.
+- One `implement` `start` line per implementation run, as its own command. When you're continued with a retry that gives a new `attempt`, append a new `start` line with it before touching the failures.
+- `task` lines use the `attempt` and `max` of your `start` line. A finished task's `pass` line and the next task's `start` line may be chained with `&&` in one command. A task you couldn't finish gets no `pass` line. On a retry, log only the tasks you work on again.
+- The `task` lines only show progress. They change no status: never edit the phase file.
 - Use a POSIX shell (Git Bash on Windows), never PowerShell.
-- An append that exits non-zero: fix an obvious slip and run it once more at most, then put one line in `NOTES` (`run log: append failed — {reason}`) and carry on. It never blocks a task or stops the sprint.
+- An append that exits non-zero, `start` or `task` alike: fix an obvious slip and run it once more at most, then put one line in `NOTES` (`run log: append failed — {reason}`) and carry on. It never blocks or delays a task, and never stops the sprint.
+- No `run_log` block: no `start` line and no `task` lines.
 
 ---
 

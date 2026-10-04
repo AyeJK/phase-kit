@@ -1,0 +1,28 @@
+{
+  "name": "phase-runner-hud",
+  "version": "0.1.0",
+  "description": "Optional Claude Code mod for Phase Runner: the running phase in the status line, a toast when a run needs you, and /phase-status with no model call.",
+  "author": {
+    "name": "Jeremy Kaye",
+    "url": "https://github.com/AyeJK"
+  },
+  "homepage": "https://github.com/AyeJK/phase-runner/tree/main/hud#readme",
+  "repository": "https://github.com/AyeJK/phase-runner",
+  "license": "MIT",
+  "keywords": ["phase-runner", "status-line", "mod", "hud"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "workspace": {
+      "type": "string",
+      "title": "Workspace folder",
+      "description": "The folder that holds docs/phases/. Absolute, or relative to the session's directory. Leave empty to use the session's directory.",
+      "default": ""
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "Play a sound with each toast",
+      "description": "Plays a short chime when a run escalates, hits a blocker or completes a phase. In the terminal, macOS only for now.",
+      "default": false
+    }
+  }
+}

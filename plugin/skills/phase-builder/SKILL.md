@@ -238,7 +238,7 @@ Each arrow = wait for the prior step's result block before spawning the next sub
 
 Spawn it in the same turn as **3c-sync**. Then:
 
-- **Wait for `DOC SYNC RESULT` before the next wave's verify.** That keeps the run log in order (wave N's `doc_sync` lines before wave N+1's `implement` `pass` / `blocked` lines; only its `start` lines may come earlier) and makes sure a failed sync stops the run before more work is verified.
+- **Wait for `DOC SYNC RESULT` before the next wave's verify.** That keeps the run log in order (wave N's `doc_sync` lines before wave N+1's `implement` `pass` / `blocked` lines; only its `start` and `task` lines may come earlier) and makes sure a failed sync stops the run before more work is verified.
 - **Doc-sync PARTIAL / FAILED:** let the in-flight implementation calls finish, don't spawn their verify, and show FAILURES (see 3c-sync). The fix is to the phase file only, so the next wave's `diff_base` stays valid.
 - **Last wave of the phase:** doc-sync runs alone; wait for it before the Step 4 checkpoint.
 
@@ -259,7 +259,7 @@ On verify or wave-test **FAIL**, the **only** code-change path is re-spawn the *
 ### Required retry shape
 
 - **Description:** `Sprint {X.Y} — {title} (retry {n})` — same sprint id every time
-- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`, with the `RUN LOG` block's `attempt` set for this run (see Run log). When continuing the same agent within the wave (see Sub-agent lifecycle), send only the failures block, the retry number and, when the run is logged, this line: `RUN LOG: attempt is now {attempt}. Append a new implement start line with it before anything else.`
+- **Prompt:** full 3a-ui or 3a-general template + `PRIOR VERIFY / WAVE TEST FAILURES` block from last `VERIFY RESULT` or `WAVE TEST RESULT`, with the `RUN LOG` block's `attempt` set for this run (see Run log). When continuing the same agent within the wave (see Sub-agent lifecycle), send only the failures block, the retry number and, when the run is logged, this line: `RUN LOG: attempt is now {attempt}. Append a new implement start line with it before anything else, and use it on your task lines.`
 - **Type:** the general-purpose type resolved in runtime-adapter.md
 
 After implementation returns → **3b-verify** again → (UI) **3f** again. Never skip verify to save time.
@@ -354,7 +354,7 @@ The orchestrator only passes the sha along — it never runs git itself.
 
 ### Run log (every gate and implementation call)
 
-Each verify, wave-test and doc-sync call carries a `run_log` block, and that gate appends its own events to `{workspace_root}/docs/phases/.runs/phase-{N}.jsonl`. Each implementation call carries a smaller one in its prompt's `RUN LOG` section (see 3a), and the implementer appends one `implement` `start` line as its first action. The orchestrator only builds the blocks from values it already tracks; it writes nothing. Field meanings, event shape and the append line are in **`run-log.md`**.
+Each verify, wave-test and doc-sync call carries a `run_log` block, and that gate appends its own events to `{workspace_root}/docs/phases/.runs/phase-{N}.jsonl`. Each implementation call carries a smaller one in its prompt's `RUN LOG` section (see 3a), and the implementer appends one `implement` `start` line as its first action, then a `task` `start` line before it begins each task and a `task` `pass` line when it finishes it. The orchestrator only builds the blocks from values it already tracks; it writes nothing. Field meanings, event shape and the append line are in **`run-log.md`**.
 
 | Field | Value |
 |-------|-------|
@@ -372,7 +372,7 @@ The implementer's block has `path`, `phase`, `wave`, `sprint` (its own sprint id
 | `attempt` | `verify_retry_count + 1` at the moment you spawn or continue it: 1 on the wave's first implementation, the new count + 1 on a retry after a verify FAIL. A retry after a wave-test FAIL doesn't bump the verify counter, so it repeats the current number, the same one its verify will log |
 | `max` | `max_verify_retries`, `0` when the user set no limit |
 
-Every implementation run gets one, including a retry continued in the same agent: that retry message carries the new `attempt` (see Retry implementation only), so the agent appends a fresh `start` line.
+Every implementation run gets one, including a retry continued in the same agent: that retry message carries the new `attempt` (see Retry implementation only), so the agent appends a fresh `start` line and puts the new `attempt` on the `task` lines of the tasks it works on again.
 
 ### Per wave (one or many sprints)
 
@@ -436,7 +436,7 @@ DESIGN SYSTEM (for UI tasks in this sprint only):
 {absolute path or skill name for docs/design/design-system.md, if it exists} — read before editing UI/component files
 ```
 
-Then construct the prompt using this template. The `RUN LOG` section is the one exception to filling in every `{…}`: fill in its `run_log:` line (see Run log), then paste the rest of the section exactly as written, the append command's placeholders included. The implementer fills those from `run_log`. Leave the whole section out when the run isn't logged; the implementer then writes nothing.
+Then construct the prompt using this template. The `RUN LOG` section is the one exception to filling in every `{…}`: fill in its `run_log:` line (see Run log), then paste the rest of the section exactly as written, the append command's placeholders included. The implementer fills those from `run_log`. Leave the whole section out when the run isn't logged; the implementer then writes nothing: no start line and no task lines.
 
 ```
 You are a {UI implementation | software development} agent. Your job is to implement a specific sprint from a project phase plan.
@@ -452,6 +452,7 @@ run_log: {"path": "{log path, forward slashes}", "phase": {N}, "wave": {W}, "spr
 Append one line to the run log from a POSIX shell (bash; Git Bash on Windows, never PowerShell). Use this exact command, replacing only the {…} placeholders and keeping every other character: {path} (twice), {phase}, {wave}, {sprint}, {attempt} and {max} come from run_log; {gate} is implement; {result} is start; {summary} is empty, so '{summary}' becomes ''.
 mkdir -p "$(dirname '{path}')" && printf '{"v":1,"ts":"%s","phase":%d,"wave":%d,"sprint":"%s","gate":"%s","result":"%s","attempt":%d,"max":%d,"summary":"%s"%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{phase}' '{wave}' '{sprint}' '{gate}' '{result}' '{attempt}' '{max}' "$(printf '%s' '{summary}' | tr '\042\134\011\012\015' "'/   " | tr -d '\000-\037')" "${RL_FILES:-}" >> '{path}'
 One line per implementation run. If you're later continued with a retry that gives a new attempt, append a new start line with it first. If the command exits non-zero, fix an obvious slip and run it once more at most, then put one line in NOTES (run log: append failed — {reason}) and carry on. It never blocks a task. Never write the log with a file-edit tool.
+After the start line, log each task as you work, with the same command: before you begin a task append a task start line, and when that task is finished append a task pass line. {gate} is task; {result} is start or pass; {summary} is the task number alone, so '{summary}' becomes '3' for task 3; {attempt} and {max} are the ones on your start line. A finished task's pass line and the next task's start line may be chained with && in one command. A task you couldn't finish gets no pass line. On a retry, log only the tasks you work on again. The same failure rule applies: a failed append is one line in NOTES and never blocks or delays a task. These lines only show progress; the phase file is still not yours to edit.
 
 PROJECT CONVENTIONS:
 {Point at whatever convention docs this project uses — list paths, don't paraphrase; sub-agent reads them itself}
